@@ -47,6 +47,21 @@ class UserResponse(UserBase):
     email: EmailStr
     role: str
     is_active: bool = True
+    
+    # Add model_config for better handling of MongoDB responses
+    model_config = {
+        "populate_by_name": True,
+        "json_schema_extra": {
+            "example": {
+                "id": "5f8d0d55b54764421b7056f0",
+                "username": "johndoe",
+                "email": "john.doe@example.com",
+                "full_name": "John Doe",
+                "role": "user",
+                "is_active": True
+            }
+        }
+    }
 
 
 class Token(BaseModel):

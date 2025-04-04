@@ -18,13 +18,16 @@ dependencies = [
     "passlib>=1.7.4",
     "python-multipart>=0.0.6",
     "sqlalchemy>=2.0.22",
-    "asyncpg>=0.28.0",  # PostgreSQL async driver
-    "aiomysql>=0.2.0",  # MySQL async driver
-    "motor>=3.3.1",     # MongoDB async driver
-    "polars>=0.19.12",  # Preferred over pandas
-    "httpx>=0.25.0",    # For microservice communication
-    "tenacity>=8.2.3",  # For retries
+    "asyncpg>=0.28.0", # PostgreSQL async driver
+    "aiomysql>=0.2.0", # MySQL async driver
+    "motor>=3.3.1", # MongoDB async driver
+    "polars>=0.19.12", # Preferred over pandas
+    "httpx>=0.25.0", # For microservice communication
+    "tenacity>=8.2.3", # For retries
     "structlog>=23.2.0", # Structured logging
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.23.5", # For testing async code
+    "email-validator>=2.1.0", # Required for pydantic EmailStr
 ]
 
 [project.optional-dependencies]

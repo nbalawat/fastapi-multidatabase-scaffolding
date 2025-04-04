@@ -42,3 +42,8 @@ class UserInDB(User):
         
         # Exclude sensitive fields from dict representation
         exclude = {"hashed_password"}
+
+
+class TokenData(BaseModel):
+    """Token data model for JWT authentication."""
+    username: Optional[str] = None

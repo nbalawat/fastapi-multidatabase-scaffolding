@@ -262,6 +262,19 @@ wheels = [
 ]
 
 [[package]]
+name = "email-validator"
+version = "2.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dnspython" },
+    { name = "idna" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/48/ce/13508a1ec3f8bb981ae4ca79ea40384becc868bfae97fd1c942bb3a001b1/email_validator-2.2.0.tar.gz", hash = "sha256:cb690f344c617a714f22e66ae771445a1ceb46821152df8e165c5f9a364582b7", size = 48967 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/ee/bf0adb559ad3c786f12bcbc9296b3f5675f529199bef03e2df281fa1fadb/email_validator-2.2.0-py3-none-any.whl", hash = "sha256:561977c2d73ce3611850a06fa56b414621e0c8faa9d66f2611407d87465da631", size = 33521 },
+]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -291,6 +304,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiomysql" },
     { name = "asyncpg" },
+    { name = "email-validator" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "motor" },
@@ -298,6 +312,8 @@ dependencies = [
     { name = "polars" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "python-jose" },
     { name = "python-multipart" },
     { name = "sqlalchemy" },
@@ -325,6 +341,7 @@ requires-dist = [
     { name = "aiomysql", specifier = ">=0.2.0" },
     { name = "asyncpg", specifier = ">=0.28.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.9.1" },
+    { name = "email-validator", specifier = ">=2.1.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.12.0" },
@@ -335,7 +352,9 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.4.2" },
     { name = "pydantic-settings", specifier = ">=2.0.3" },
     { name = "pyodbc", marker = "extra == 'sqlserver'", specifier = ">=4.0.39" },
+    { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.2" },
+    { name = "pytest-asyncio", specifier = ">=0.23.5" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.1" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
     { name = "python-jose", specifier = ">=3.3.0" },

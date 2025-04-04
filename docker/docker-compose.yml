@@ -12,11 +12,11 @@ services:
       - API_PREFIX=/api/v1
       - SECRET_KEY=changethisinsecretkey
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      - DB_TYPE=postgres  # Can be changed to mysql or mongodb
-      - DB_HOST=postgres  # Change to mysql or mongodb based on DB_TYPE
-      - DB_PORT=5432      # 5432 for postgres, 3306 for mysql, 27017 for mongodb
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      - DB_TYPE=mongodb  # Using MongoDB
+      - DB_HOST=mongodb  # Using the MongoDB service name
+      - DB_PORT=27017    # MongoDB default port
+      - DB_USER=mongodb
+      - DB_PASSWORD=mongodb
       - DB_NAME=fastapi
     volumes:
       - ../:/app

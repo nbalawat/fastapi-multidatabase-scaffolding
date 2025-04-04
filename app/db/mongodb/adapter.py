@@ -1,4 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
+import logging
+import asyncio
+from datetime import datetime
 from bson import ObjectId
 from bson.errors import InvalidId
 
@@ -6,6 +9,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.core.config import Settings
 from app.db.base import DatabaseAdapter, DatabaseAdapterFactory
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 class MongoDBAdapter(DatabaseAdapter):
@@ -25,20 +31,56 @@ class MongoDBAdapter(DatabaseAdapter):
         self._db_name = settings.db_name
     
     async def connect(self) -> None:
-        """Connect to the MongoDB database."""
+        """Connect to the MongoDB database with retry mechanism."""
         if self._client is None:
-            # Use the provided connection string if available, otherwise construct one
-            if self.settings.mongodb_connection_string:
-                connection_string = self.settings.mongodb_connection_string
-            else:
-                # Construct the MongoDB connection string
-                connection_string = (
-                    f"mongodb://{self.settings.db_user}:{self.settings.db_password}"
-                    f"@{self.settings.db_host}:{self.settings.db_port}/{self._db_name}"
-                )
+            max_retries = 5
+            retry_delay = 2  # seconds
             
-            # Create a client
-            self._client = AsyncIOMotorClient(connection_string)
+            for attempt in range(1, max_retries + 1):
+                try:
+                    # Use the provided connection string if available, otherwise construct one
+                    if self.settings.mongodb_connection_string:
+                        connection_string = self.settings.mongodb_connection_string
+                    else:
+                        # Construct the MongoDB connection string based on whether auth is needed
+                        if self.settings.db_user and self.settings.db_password:
+                            # Connection with authentication
+                            connection_string = (
+                                f"mongodb://{self.settings.db_user}:{self.settings.db_password}"
+                                f"@{self.settings.db_host}:{self.settings.db_port}/{self._db_name}"
+                                f"?authSource=admin"
+                            )
+                        else:
+                            # Connection without authentication
+                            connection_string = (
+                                f"mongodb://{self.settings.db_host}:{self.settings.db_port}/{self._db_name}"
+                            )
+                    
+                    # Log connection attempt (without credentials)
+                    sanitized_conn_string = connection_string.replace(self.settings.db_password, "****") if self.settings.db_password else connection_string
+                    logger.info(f"Connecting to MongoDB (attempt {attempt}/{max_retries}): {sanitized_conn_string}")
+                    
+                    # Create a client with serverSelectionTimeoutMS to fail fast if server is unreachable
+                    self._client = AsyncIOMotorClient(
+                        connection_string, 
+                        serverSelectionTimeoutMS=5000,
+                        connectTimeoutMS=5000,
+                        socketTimeoutMS=10000
+                    )
+                    
+                    # Test the connection
+                    await self._client.admin.command('ping')
+                    logger.info("Successfully connected to MongoDB")
+                    return
+                    
+                except Exception as e:
+                    if attempt < max_retries:
+                        logger.warning(f"Failed to connect to MongoDB (attempt {attempt}/{max_retries}): {str(e)}. Retrying in {retry_delay} seconds...")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 1.5  # Exponential backoff
+                    else:
+                        logger.error(f"Failed to connect to MongoDB after {max_retries} attempts: {str(e)}")
+                        raise
     
     async def disconnect(self) -> None:
         """Disconnect from the MongoDB database."""
@@ -105,7 +147,8 @@ class MongoDBAdapter(DatabaseAdapter):
     def _process_document(self, document: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Process a document from MongoDB to make it compatible with the API.
         
-        This converts the _id field to a string id field.
+        This converts the _id field to a string id field and ensures all fields
+        have the correct types for Pydantic validation.
         
         Args:
             document: The document to process
@@ -122,6 +165,21 @@ class MongoDBAdapter(DatabaseAdapter):
         # Convert _id to string id
         if "_id" in result:
             result["id"] = str(result.pop("_id"))
+        
+        # Ensure boolean fields are properly typed
+        if "is_active" in result and result["is_active"] is None:
+            result["is_active"] = True
+            
+        # Ensure role field is properly set
+        if "role" in result and result["role"] is None:
+            from app.models.users import Role
+            result["role"] = Role.USER.value
+            
+        # Ensure datetime fields are properly serialized
+        # MongoDB returns datetime objects that need to be ISO-formatted strings
+        for key, value in result.items():
+            if isinstance(value, datetime):
+                result[key] = value.isoformat()
         
         return result
     

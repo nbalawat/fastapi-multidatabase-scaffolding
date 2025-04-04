@@ -10,7 +10,7 @@ from app.core.security import (
     create_access_token,
 )
 from app.db.base import DatabaseAdapter
-from app.main import get_db_adapter
+from app.api.dependencies import get_db_adapter
 from app.models.users import UserInDB, Role
 from app.schemas.users import UserCreate, UserResponse, Token
 
@@ -108,6 +108,10 @@ async def register_user(
     # Ensure role is always set to a valid value
     if not user_data.get("role"):
         user_data["role"] = Role.USER.value
+        
+    # Ensure is_active is always set to a boolean value
+    if "is_active" not in user_data or user_data["is_active"] is None:
+        user_data["is_active"] = True
     
     # Create the user in the database
     created_user = await db_adapter.create("users", user_data)
