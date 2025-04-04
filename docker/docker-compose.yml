@@ -1,0 +1,67 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+      - "8888:8888"
+    environment:
+      - APP_NAME=FastAPI Multiple Databases
+      - DEBUG=true
+      - API_PREFIX=/api/v1
+      - SECRET_KEY=changethisinsecretkey
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - DB_TYPE=postgres  # Can be changed to mysql or mongodb
+      - DB_HOST=postgres  # Change to mysql or mongodb based on DB_TYPE
+      - DB_PORT=5432      # 5432 for postgres, 3306 for mysql, 27017 for mongodb
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=fastapi
+    volumes:
+      - ../:/app
+    depends_on:
+      - postgres
+      - mysql
+      - mongodb
+    command: |
+      /bin/sh -c 'sh /app/start.sh'
+
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=fastapi
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  mysql:
+    image: mysql:8
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_USER=mysql
+      - MYSQL_PASSWORD=mysql
+      - MYSQL_DATABASE=fastapi
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  mongodb:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=mongodb
+      - MONGO_INITDB_ROOT_PASSWORD=mongodb
+      - MONGO_INITDB_DATABASE=fastapi
+    volumes:
+      - mongodb_data:/data/db
+
+volumes:
+  postgres_data:
+  mysql_data:
+  mongodb_data:
