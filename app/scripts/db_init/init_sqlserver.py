@@ -23,10 +23,10 @@ logger = get_logger(__name__)
 
 async def create_tables() -> None:
     """Create database tables if they don't exist."""
-    settings = get_settings()
-    logger.info(f"Connecting to SQL Server database: {settings.sqlserver_db} on {settings.sqlserver_host}:{settings.sqlserver_port}")
-    
     try:
+        settings = get_settings()
+        logger.info(f"Connecting to SQL Server database: {settings.sqlserver_db} on {settings.sqlserver_host}:{settings.sqlserver_port}")
+        
         # For database creation, we'll use a direct pymssql connection instead of SQLAlchemy
         # to avoid transaction issues
         host = settings.sqlserver_host
@@ -35,15 +35,33 @@ async def create_tables() -> None:
             
         logger.info(f"Connecting to SQL Server master database on {host}:{settings.sqlserver_port}")
         
-        # Use direct pymssql connection for database operations
-        conn = pymssql.connect(
-            server=host,
-            port=settings.sqlserver_port,
-            user=settings.sqlserver_user,
-            password=settings.sqlserver_password,
-            database="master",  # Connect to master database
-            autocommit=True  # Important for CREATE DATABASE
-        )
+        # Add robust retry mechanism
+        max_retries = 30
+        retry_count = 0
+        retry_delay = 5  # seconds
+        
+        while retry_count < max_retries:
+            try:
+                logger.info(f"Connection attempt {retry_count + 1}/{max_retries}")
+                # Use direct pymssql connection for database operations
+                conn = pymssql.connect(
+                    server=host,
+                    port=settings.sqlserver_port,
+                    user=settings.sqlserver_user,
+                    password=settings.sqlserver_password,
+                    database="master",  # Connect to master database
+                    autocommit=True,  # Important for CREATE DATABASE
+                    login_timeout=30  # Set login timeout to 30 seconds
+                )
+                logger.info("Successfully connected to SQL Server")
+                break
+            except Exception as e:
+                retry_count += 1
+                if retry_count >= max_retries:
+                    logger.error(f"Failed to connect to SQL Server after {max_retries} attempts: {str(e)}")
+                    raise
+                logger.warning(f"Connection attempt failed: {str(e)}. Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
         
         try:
             cursor = conn.cursor()
@@ -61,23 +79,37 @@ async def create_tables() -> None:
             cursor.close()
         finally:
             conn.close()
-        
+            
         # Now connect to our database for table creation
         session_factory = create_async_session(settings)
         
         # Read SQL script
         try:
             # Try with absolute path first
-            script_path = "/app/app/scripts/init_tables_sqlserver.sql"
+            script_path = "/app/app/scripts/db_init/init_tables_sqlserver.sql"
             logger.info(f"Attempting to read SQL script from {script_path}")
             with open(script_path, "r") as f:
                 sql_script = f.read()
         except FileNotFoundError:
-            # Fall back to relative path
-            script_path = "app/scripts/init_tables_sqlserver.sql"
-            logger.info(f"Falling back to relative path: {script_path}")
-            with open(script_path, "r") as f:
-                sql_script = f.read()
+            # Try another absolute path
+            try:
+                script_path = "/app/app/scripts/init_tables_sqlserver.sql"
+                logger.info(f"Trying alternative path: {script_path}")
+                with open(script_path, "r") as f:
+                    sql_script = f.read()
+            except FileNotFoundError:
+                # Fall back to relative paths
+                try:
+                    script_path = "app/scripts/db_init/init_tables_sqlserver.sql"
+                    logger.info(f"Trying relative path: {script_path}")
+                    with open(script_path, "r") as f:
+                        sql_script = f.read()
+                except FileNotFoundError:
+                    # Last attempt
+                    script_path = "app/scripts/init_tables_sqlserver.sql"
+                    logger.info(f"Final attempt with path: {script_path}")
+                    with open(script_path, "r") as f:
+                        sql_script = f.read()
         
         logger.info(f"Successfully read SQL script from {script_path}")
         
@@ -116,7 +148,7 @@ async def create_tables() -> None:
             logger.info("Database tables created successfully")
         finally:
             await session.close()
-    
+            
     except Exception as e:
         logger.error(f"Error creating database tables: {e}")
         import traceback

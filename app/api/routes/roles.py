@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["roles"])
 
 
+
+
+
 @router.get(
     "",
     response_model=List[RolePermissions],

@@ -31,7 +31,7 @@ wait_for_mongodb() {
 # Function to check if SQL Server is ready
 wait_for_sqlserver() {
     echo "Waiting for SQL Server to be ready..."
-    max_retries=30
+    max_retries=60
     retries=0
     
     while [ $retries -lt $max_retries ]; do
@@ -40,8 +40,8 @@ wait_for_sqlserver() {
             return 0
         fi
         
-        echo "SQL Server not ready yet. Retrying in 2 seconds..."
-        sleep 2
+        echo "SQL Server not ready yet. Retrying in 5 seconds..."
+        sleep 5
         retries=$((retries + 1))
     done
     
@@ -84,15 +84,15 @@ python -c "from app.main import app; print('Database adapters registered success
 if [ "$DB_TYPE" = "postgres" ]; then
     # Create the PostgreSQL database if it doesn't exist
     echo "Creating PostgreSQL database if it doesn't exist..."
-    python -m app.scripts.create_postgres_db
+    python -m app.scripts.db_init.create_postgres_db
 
     # Initialize PostgreSQL tables
     echo "Initializing PostgreSQL tables..."
-    python -m app.scripts.init_postgres
+    python -m app.scripts.db_init.init_postgres
 elif [ "$DB_TYPE" = "mongodb" ]; then
     # Initialize MongoDB collections and indexes
     echo "Initializing MongoDB..."
-    python -m app.scripts.init_mongodb
+    python -m app.scripts.db_init.init_mongodb
 elif [ "$DB_TYPE" = "mysql" ]; then
     # Initialize MySQL database
     echo "Initializing MySQL..."
@@ -100,11 +100,11 @@ elif [ "$DB_TYPE" = "mysql" ]; then
 elif [ "$DB_TYPE" = "sqlserver" ]; then
     # Initialize SQL Server database
     echo "Initializing SQL Server..."
-    python -m app.scripts.init_sqlserver
+    python -m app.scripts.db_init.init_sqlserver
 fi
 
 # Create admin user
-python -m app.scripts.init_db  # Create admin user
+python -m app.scripts.db_init.init_db  # Create admin user
 
 # Start application based on command
 if [ "$1" = "jupyter" ]; then

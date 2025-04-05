@@ -16,6 +16,7 @@ from app.models.users import Role
 from app.db.postgres.adapter import PostgresAdapter
 from app.db.mysql.adapter import MySQLAdapter
 from app.db.mongodb.adapter import MongoDBAdapter
+from app.db.sqlserver.adapter import SQLServerAdapter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

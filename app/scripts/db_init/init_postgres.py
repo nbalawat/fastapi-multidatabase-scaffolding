@@ -31,13 +31,13 @@ async def create_tables() -> None:
         # Read SQL script
         try:
             # Try with absolute path first
-            script_path = "/app/app/scripts/init_tables.sql"
+            script_path = "/app/app/scripts/db_init/init_tables_postgres.sql"
             logger.info(f"Attempting to read SQL script from {script_path}")
             with open(script_path, "r") as f:
                 sql_script = f.read()
         except FileNotFoundError:
             # Fall back to relative path
-            script_path = "app/scripts/init_tables.sql"
+            script_path = "app/scripts/db_init/init_tables_postgres.sql"
             logger.info(f"Falling back to relative path: {script_path}")
             with open(script_path, "r") as f:
                 sql_script = f.read()

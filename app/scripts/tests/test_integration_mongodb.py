@@ -1,11 +1,15 @@
 """Test script for MongoDB integration and RBAC system."""
 import asyncio
+import pytest
+import os
 import logging
 from typing import Dict, Any, List, Optional
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from app.core.config import get_settings
 from app.db.mongodb.adapter import MongoDBAdapter
+from app.core.security import get_password_hash
+from app.models.users import Role
+from app.core.config import get_settings
 from app.models.permissions import Permission, RolePermissions
 
 # Configure logging
@@ -30,8 +34,9 @@ async def test_mongodb_connection() -> None:
 
 async def test_mongodb_adapter() -> None:
     """Test the MongoDB adapter."""
-    # Create MongoDB adapter
-    adapter = MongoDBAdapter()
+    # Get settings and create MongoDB adapter
+    settings = get_settings()
+    adapter = MongoDBAdapter(settings=settings)
     
     try:
         # Connect to MongoDB
@@ -89,8 +94,9 @@ async def test_mongodb_adapter() -> None:
 
 async def test_roles_in_mongodb() -> None:
     """Test role management in MongoDB."""
-    # Create MongoDB adapter
-    adapter = MongoDBAdapter()
+    # Get settings and create MongoDB adapter
+    settings = get_settings()
+    adapter = MongoDBAdapter(settings=settings)
     
     try:
         # Connect to MongoDB
@@ -148,8 +154,9 @@ async def test_roles_in_mongodb() -> None:
 
 async def test_user_permissions() -> None:
     """Test user permissions in MongoDB."""
-    # Create MongoDB adapter
-    adapter = MongoDBAdapter()
+    # Get settings and create MongoDB adapter
+    settings = get_settings()
+    adapter = MongoDBAdapter(settings=settings)
     
     try:
         # Connect to MongoDB

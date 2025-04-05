@@ -1,24 +1,165 @@
-"""Test script for Role-Based Access Control (RBAC) system."""
+"""Base module for Role-Based Access Control (RBAC) system tests.
+
+This module provides common functionality for testing RBAC across different database types.
+Database-specific test modules should import this module and provide their specific port.
+"""
 import asyncio
 import logging
 import httpx
-from typing import Dict, Any, Optional, List
+import pytest
+from typing import Dict, Any, Optional, List, Callable
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# API base URL
-BASE_URL = "http://localhost:8000"
+# API prefix is the same for all database types
 API_PREFIX = "/api/v1"
 
 
-async def test_rbac_system() -> None:
-    """Test the RBAC system with MongoDB."""
+async def login(client: httpx.AsyncClient, username: str, password: str, base_url: str) -> Optional[str]:
+    """Login and get token. Try different possible login endpoints."""
+    login_data = {
+        "username": username,
+        "password": password
+    }
+    
+    # Try different possible login endpoints
+    possible_endpoints = [
+        f"{base_url}{API_PREFIX}/auth/login",
+        f"{base_url}{API_PREFIX}/login",
+        f"{base_url}/auth/login",
+        f"{base_url}{API_PREFIX}/auth/token"
+    ]
+    
+    for endpoint in possible_endpoints:
+        try:
+            logger.info(f"Attempting login at: {endpoint}")
+            response = await client.post(
+                endpoint,
+                json=login_data
+            )
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                access_token = token_data.get("access_token")
+                if access_token:
+                    logger.info(f"Login successful at: {endpoint}")
+                    return access_token
+                logger.warning(f"Login response missing access_token: {token_data}")
+            else:
+                logger.warning(f"Login attempt failed at {endpoint}: {response.status_code}")
+        except Exception as e:
+            logger.warning(f"Error trying login at {endpoint}: {e}")
+    
+    logger.error(f"All login attempts failed for {username}")
+    return None
+
+
+async def create_role(client: httpx.AsyncClient, token: str, role_name: str, permissions: List[str], base_url: str) -> bool:
+    """Create a new role with specified permissions."""
+    headers = {"Authorization": f"Bearer {token}"}
+    role_data = {
+        "name": role_name,
+        "permissions": permissions
+    }
+    
+    response = await client.post(
+        f"{base_url}{API_PREFIX}/roles",
+        json=role_data,
+        headers=headers
+    )
+    
+    if response.status_code == 201:
+        logger.info(f"Role created successfully: {role_name}")
+        return True
+    
+    logger.error(f"Failed to create role: {response.status_code}")
+    return False
+
+
+async def create_user(client: httpx.AsyncClient, token: str, username: str, password: str, role: str, base_url: str) -> bool:
+    """Create a new user with the specified role."""
+    headers = {"Authorization": f"Bearer {token}"}
+    user_data = {
+        "username": username,
+        "password": password,
+        "role": role
+    }
+    
+    response = await client.post(
+        f"{base_url}{API_PREFIX}/users",
+        json=user_data,
+        headers=headers
+    )
+    
+    if response.status_code == 201:
+        logger.info(f"User created successfully: {username}")
+        return True
+    
+    logger.error(f"Failed to create user: {response.status_code}")
+    return False
+
+
+async def check_permission(client: httpx.AsyncClient, token: str, endpoint: str, method: str, base_url: str) -> bool:
+    """Check if a user has permission to access an endpoint."""
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    if method.upper() == "GET":
+        response = await client.get(f"{base_url}{endpoint}", headers=headers)
+    elif method.upper() == "POST":
+        response = await client.post(f"{base_url}{endpoint}", headers=headers, json={})
+    elif method.upper() == "PUT":
+        response = await client.put(f"{base_url}{endpoint}", headers=headers, json={})
+    elif method.upper() == "DELETE":
+        response = await client.delete(f"{base_url}{endpoint}", headers=headers)
+    else:
+        logger.error(f"Unsupported method: {method}")
+        return False
+    
+    # 200-299 status codes indicate success, 403 indicates permission denied
+    if 200 <= response.status_code < 300:
+        logger.info(f"Permission check passed for {method} {endpoint}: {response.status_code}")
+        return True
+    elif response.status_code == 403:
+        logger.info(f"Permission denied for {method} {endpoint}: {response.status_code}")
+        return False
+    else:
+        logger.warning(f"Unexpected status code for {method} {endpoint}: {response.status_code}")
+        return False
+
+
+async def cleanup(client: httpx.AsyncClient, token: str, test_user: str, test_role: str, base_url: str) -> None:
+    """Clean up test user and role."""
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Delete test user
+    delete_user_response = await client.delete(
+        f"{base_url}{API_PREFIX}/users/{test_user}",
+        headers=headers
+    )
+    
+    logger.info(f"Delete user: {delete_user_response.status_code}")
+    
+    # Delete test role
+    delete_role_response = await client.delete(
+        f"{base_url}{API_PREFIX}/roles/{test_role}",
+        headers=headers
+    )
+    
+    logger.info(f"Delete role: {delete_role_response.status_code}")
+
+
+async def test_rbac_system(base_url: str) -> None:
+    """Test the RBAC system with the specified database.
+    
+    Args:
+        base_url: The base URL for the API, including port
+    """
     # Create an async client
     async with httpx.AsyncClient() as client:
         # Check health
-        health_response = await client.get(f"{BASE_URL}/health")
+        health_response = await client.get(f"{base_url}/health")
         logger.info(f"Health check status: {health_response.status_code}")
         
         if health_response.status_code != 200:
@@ -26,33 +167,72 @@ async def test_rbac_system() -> None:
             return
         
         # Login as admin
-        admin_token = await login(client, "admin", "admin123")
+        admin_token = await login(client, "admin", "admin123", base_url)
         
         if not admin_token:
             logger.error("Admin login failed")
             return
         
-        logger.info("Login successful for user: admin")
+        logger.info("Admin login successful")
         
-        # Test role management endpoints
-        await test_role_management(client, admin_token)
+        # Test role creation
+        test_role_name = f"test_role_{asyncio.get_event_loop().time()}"
+        test_permissions = ["read:items", "write:items"]
         
+        role_created = await create_role(client, admin_token, test_role_name, test_permissions, base_url)
+        if not role_created:
+            logger.error("Failed to create test role")
+            return
+        
+        # Test user creation
+        test_username = f"test_user_{asyncio.get_event_loop().time()}"
+        test_password = "password123"
+        
+        user_created = await create_user(client, admin_token, test_username, test_password, test_role_name, base_url)
+        if not user_created:
+            logger.error("Failed to create test user")
+            # Clean up role
+            await cleanup(client, admin_token, "", test_role_name, base_url)
+            return
+        
+        # Login as test user
+        test_user_token = await login(client, test_username, test_password, base_url)
+        if not test_user_token:
+            logger.error("Test user login failed")
+            # Clean up
+            await cleanup(client, admin_token, test_username, test_role_name, base_url)
+            return
+        
+        logger.info("Test user login successful")
+        
+        # Test permissions
+        # Should have permission to access items
+        items_permission = await check_permission(client, test_user_token, f"{API_PREFIX}/items", "GET", base_url)
+        logger.info(f"Test user has items permission: {items_permission}")
+        
+        # Should not have permission to access admin endpoints
+        admin_permission = await check_permission(client, test_user_token, f"{API_PREFIX}/admin", "GET", base_url)
+        logger.info(f"Test user has admin permission: {admin_permission}")
+        
+        # Clean up
+        await cleanup(client, admin_token, test_username, test_role_name, base_url)
         # Create test users with different roles
-        await create_test_users(client, admin_token)
+        await create_test_users(client, admin_token, base_url)
         
         # Test permission-based access
-        await test_permission_based_access(client)
+        await test_permission_based_access(client, base_url)
         
         logger.info("RBAC system test completed successfully!")
 
 
-async def login(client: httpx.AsyncClient, username: str, password: str) -> Optional[str]:
+async def login(client: httpx.AsyncClient, username: str, password: str, base_url: str) -> Optional[str]:
     """Login and get an access token.
     
     Args:
         client: HTTP client
         username: Username
         password: Password
+        base_url: The base URL for the API, including port
         
     Returns:
         Access token if login successful, None otherwise
@@ -63,7 +243,7 @@ async def login(client: httpx.AsyncClient, username: str, password: str) -> Opti
     }
     
     response = await client.post(
-        f"{BASE_URL}{API_PREFIX}/token",
+        f"{base_url}{API_PREFIX}/token",
         data=login_data
     )
     
@@ -74,18 +254,19 @@ async def login(client: httpx.AsyncClient, username: str, password: str) -> Opti
     return response.json()["access_token"]
 
 
-async def test_role_management(client: httpx.AsyncClient, admin_token: str) -> None:
+async def test_role_management(client: httpx.AsyncClient, admin_token: str, base_url: str) -> None:
     """Test the role management endpoints.
     
     Args:
         client: HTTP client
         admin_token: Admin access token
+        base_url: The base URL for the API, including port
     """
     headers = {"Authorization": f"Bearer {admin_token}"}
     
     # List all roles
     list_response = await client.get(
-        f"{BASE_URL}{API_PREFIX}/roles",
+        f"{base_url}{API_PREFIX}/roles",
         headers=headers
     )
     
@@ -108,7 +289,7 @@ async def test_role_management(client: httpx.AsyncClient, admin_token: str) -> N
     }
     
     create_response = await client.post(
-        f"{BASE_URL}{API_PREFIX}/roles",
+        f"{base_url}{API_PREFIX}/roles",
         json=custom_role,
         headers=headers
     )
@@ -121,7 +302,7 @@ async def test_role_management(client: httpx.AsyncClient, admin_token: str) -> N
     
     # Get the custom role
     get_response = await client.get(
-        f"{BASE_URL}{API_PREFIX}/roles/{custom_role['name']}",
+        f"{base_url}{API_PREFIX}/roles/{custom_role['name']}",
         headers=headers
     )
     
@@ -144,7 +325,7 @@ async def test_role_management(client: httpx.AsyncClient, admin_token: str) -> N
     }
     
     update_response = await client.put(
-        f"{BASE_URL}{API_PREFIX}/roles/{custom_role['name']}",
+        f"{base_url}{API_PREFIX}/roles/{custom_role['name']}",
         json=updated_role,
         headers=headers
     )
@@ -157,7 +338,7 @@ async def test_role_management(client: httpx.AsyncClient, admin_token: str) -> N
     
     # List all permissions
     permissions_response = await client.get(
-        f"{BASE_URL}{API_PREFIX}/roles/permissions",
+        f"{base_url}{API_PREFIX}/roles/permissions",
         headers=headers
     )
     
@@ -169,12 +350,13 @@ async def test_role_management(client: httpx.AsyncClient, admin_token: str) -> N
         logger.info(f"Listed {len(permissions)} permissions")
 
 
-async def create_test_users(client: httpx.AsyncClient, admin_token: str) -> None:
+async def create_test_users(client: httpx.AsyncClient, admin_token: str, base_url: str) -> None:
     """Create test users with different roles.
     
     Args:
         client: HTTP client
         admin_token: Admin access token
+        base_url: The base URL for the API, including port
     """
     headers = {"Authorization": f"Bearer {admin_token}"}
     
@@ -206,7 +388,7 @@ async def create_test_users(client: httpx.AsyncClient, admin_token: str) -> None
     # Register test users
     for user in test_users:
         register_response = await client.post(
-            f"{BASE_URL}{API_PREFIX}/register",
+            f"{base_url}{API_PREFIX}/register",
             json=user
         )
         
@@ -220,11 +402,12 @@ async def create_test_users(client: httpx.AsyncClient, admin_token: str) -> None
             # Continue with the test even if registration fails
 
 
-async def test_permission_based_access(client: httpx.AsyncClient) -> None:
+async def test_permission_based_access(client: httpx.AsyncClient, base_url: str) -> None:
     """Test permission-based access to endpoints.
     
     Args:
         client: HTTP client
+        base_url: The base URL for the API, including port
     """
     # Test users and their expected permissions
     test_cases = [
@@ -268,7 +451,7 @@ async def test_permission_based_access(client: httpx.AsyncClient) -> None:
     
     for test_case in test_cases:
         # Login as test user
-        token = await login(client, test_case["username"], test_case["password"])
+        token = await login(client, test_case["username"], test_case["password"], base_url)
         
         if not token:
             logger.error(f"Login failed for {test_case['username']}")
@@ -288,7 +471,7 @@ async def test_permission_based_access(client: httpx.AsyncClient) -> None:
             }
             
             create_response = await client.post(
-                f"{BASE_URL}{API_PREFIX}/notes",
+                f"{base_url}{API_PREFIX}/notes",
                 json=note_data,
                 headers=headers
             )
@@ -301,7 +484,7 @@ async def test_permission_based_access(client: httpx.AsyncClient) -> None:
                 
                 # Test reading the note
                 get_response = await client.get(
-                    f"{BASE_URL}{API_PREFIX}/notes/{note_id}",
+                    f"{base_url}{API_PREFIX}/notes/{note_id}",
                     headers=headers
                 )
                 
@@ -318,7 +501,7 @@ async def test_permission_based_access(client: httpx.AsyncClient) -> None:
                     }
                     
                     update_response = await client.put(
-                        f"{BASE_URL}{API_PREFIX}/notes/{note_id}",
+                        f"{base_url}{API_PREFIX}/notes/{note_id}",
                         json=update_data,
                         headers=headers
                     )
@@ -331,7 +514,7 @@ async def test_permission_based_access(client: httpx.AsyncClient) -> None:
                 # Test deleting the note
                 if test_case["can_delete_note"]:
                     delete_response = await client.delete(
-                        f"{BASE_URL}{API_PREFIX}/notes/{note_id}",
+                        f"{base_url}{API_PREFIX}/notes/{note_id}",
                         headers=headers
                     )
                     
@@ -344,7 +527,7 @@ async def test_permission_based_access(client: httpx.AsyncClient) -> None:
         
         # Test accessing admin endpoint
         admin_response = await client.get(
-            f"{BASE_URL}{API_PREFIX}/notes/admin/notes",
+            f"{base_url}{API_PREFIX}/notes/admin/notes",
             headers=headers
         )
         
