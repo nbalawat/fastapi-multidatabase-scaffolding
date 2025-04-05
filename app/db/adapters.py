@@ -249,11 +249,15 @@ class MongoDBAdapter(DatabaseAdapter):
                 if self.settings.mongodb_connection_string:
                     conn_str = self.settings.mongodb_connection_string
                 else:
-                    # Build a standard MongoDB connection string
-                    conn_str = f"mongodb://{self.settings.db_user}:{self.settings.db_password}@{self.settings.db_host}:{self.settings.db_port}/{self.settings.db_name}"
+                    # Build a standard MongoDB connection string with authSource=admin
+                    # This is critical for MongoDB authentication to work properly
+                    conn_str = f"mongodb://{self.settings.db_user}:{self.settings.db_password}@{self.settings.db_host}:{self.settings.db_port}/{self.settings.db_name}?authSource=admin"
                 
                 logger.info(f"Connecting to MongoDB at {self.settings.db_host if not self.settings.mongodb_connection_string else 'custom connection string'}")
-                self._client = AsyncIOMotorClient(conn_str)
+                # Add server selection timeout to fail fast if connection fails
+                self._client = AsyncIOMotorClient(conn_str, serverSelectionTimeoutMS=5000)
+                # Verify connection by checking server info
+                await self._client.admin.command('ping')
                 self._db = self._client[self.settings.db_name]
                 logger.info("Connected to MongoDB database")
             except Exception as e:

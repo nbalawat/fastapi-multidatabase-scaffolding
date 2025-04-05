@@ -106,14 +106,10 @@ class DatabaseInitializer:
         # For MongoDB, we need to parse the statements and execute them
         # This is a simplified version that just creates collections
         async with self.connection_manager.get_connection("mongodb") as client:
-            # Use the db_name from settings for MongoDB database name
-            db_name = self.settings.db_name
-            if self.settings.db_type == "mongodb":
-                # If MongoDB is the primary database, use the main db_name
-                db = client[db_name]
-            else:
-                # Otherwise use a default name
-                db = client["fastapi_db"]
+            # The MongoDB adapter already has the database connection set up
+            # We don't need to access it using dictionary-style access
+            # Instead, use the _db attribute directly
+            db = client._db
             
             logger.info(f"Initializing MongoDB collections in database '{db.name}'")
             

@@ -186,6 +186,7 @@ class BaseController(Generic[T, U, V]):
             List of items
         """
         # Pre-processing hook
+        # Use the before_list hook for pre-processing
         processed_filters = await self.before_list(filters or {})
         
         # Convert filters to database model if schema is available
@@ -357,3 +358,17 @@ class BaseController(Generic[T, U, V]):
         """
         # Convert any UUID objects to strings
         return self._convert_uuid_to_string(data)
+        
+    async def before_list(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        """Pre-processing hook for list operations.
+        
+        This method can be overridden by subclasses to modify the filters
+        before they are used to query the database.
+        
+        Args:
+            filters: The filters to apply to the list operation
+            
+        Returns:
+            The processed filters
+        """
+        return filters
