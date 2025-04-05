@@ -37,11 +37,21 @@ def custom_openapi(app: FastAPI) -> Dict[str, Any]:
             "scheme": "bearer",
             "bearerFormat": "JWT",
             "description": "Enter JWT token in the format: Bearer {token}",
+        },
+        "OAuth2PasswordBearer": {
+            "type": "oauth2",
+            "flows": {
+                "password": {
+                    "tokenUrl": "/api/v1/token",
+                    "scopes": {}
+                }
+            },
+            "description": "OAuth2 password flow for authentication"
         }
     }
     
     # Add global security requirement
-    openapi_schema["security"] = [{"bearerAuth": []}]
+    openapi_schema["security"] = [{"bearerAuth": []}, {"OAuth2PasswordBearer": []}]
     
     # Store the schema
     app.openapi_schema = openapi_schema

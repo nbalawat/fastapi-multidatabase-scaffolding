@@ -137,3 +137,28 @@ class DatabaseAdapterFactory:
             A list of registered database type identifiers
         """
         return list(cls._adapters.keys())
+
+
+async def get_db_adapter() -> DatabaseAdapter:
+    """Get the database adapter.
+    
+    This function is used as a dependency in FastAPI routes.
+    
+    Returns:
+        The database adapter for the configured database type
+    """
+    # Import here to avoid circular imports
+    from app.core.config import get_settings
+    
+    # Get the configured database type
+    settings = get_settings()
+    db_type = settings.db_type
+    
+    # Get the adapter instance
+    adapter = DatabaseAdapterFactory.get_adapter(db_type)
+    
+    # Ensure the adapter is connected
+    if not hasattr(adapter, "_client") or adapter._client is None:
+        await adapter.connect()
+    
+    return adapter

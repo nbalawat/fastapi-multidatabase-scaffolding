@@ -65,10 +65,13 @@ class SQLServerAdapter(DatabaseAdapter):
         if collection == "users" and "is_active" in insert_data:
             insert_data["disabled"] = not insert_data.pop("is_active")
         
-        # Convert Python lists to JSON strings for SQL Server
-        for key, value in insert_data.items():
-            if isinstance(value, list):
-                insert_data[key] = json.dumps(value)
+        # Convert Python lists and sets to JSON strings for SQL Server
+        for key, value in list(insert_data.items()):
+            if isinstance(value, (list, set)):
+                insert_data[key] = json.dumps(list(value))
+            # Handle enum values
+            elif hasattr(value, 'value'):
+                insert_data[key] = value.value
         
         # Build INSERT statement with bracketed column names
         columns = ", ".join(f"[{key}]" for key in insert_data.keys())
@@ -80,6 +83,35 @@ class SQLServerAdapter(DatabaseAdapter):
         """
         
         try:
+            # Add special handling for roles collection
+            if collection == "roles":
+                # For roles, use the name as the ID
+                if "name" in insert_data and "id" not in insert_data:
+                    insert_data["id"] = insert_data["name"]
+                    logger.debug(f"Using name as ID for role: {insert_data['name']}")
+                
+                # Check if permissions is a list or set and convert to JSON
+                if "permissions" in insert_data:
+                    logger.debug(f"Role permissions before conversion: {insert_data['permissions']}")
+                    if isinstance(insert_data['permissions'], (list, set)):
+                        # Make sure all permissions are strings
+                        permissions_list = [str(p) for p in insert_data['permissions']]
+                        insert_data['permissions'] = json.dumps(permissions_list)
+                        logger.debug(f"Converted permissions to JSON: {insert_data['permissions']}")
+                
+                # Check if the role already exists to avoid duplicate key errors
+                try:
+                    existing = await self.read(collection, insert_data["name"])
+                    if existing:
+                        logger.warning(f"Role {insert_data['name']} already exists, skipping creation")
+                        return existing
+                except Exception as e:
+                    logger.debug(f"Error checking if role exists: {str(e)}")
+            
+            # Log the SQL and parameters for debugging
+            logger.debug(f"SQL: {sql}")
+            logger.debug(f"Parameters: {insert_data}")
+            
             result = await self._session.execute(sa_text(sql), insert_data)
             await self._session.commit()
             
@@ -89,12 +121,32 @@ class SQLServerAdapter(DatabaseAdapter):
                 logger.debug("Create method - Raw row data: %s", pprint.pformat(dict(row._mapping)))
                 logger.debug("Create method - Row keys: %s", pprint.pformat(list(row._mapping.keys())))
                 
-                # Update with values from the database
+                # Process the row data
                 for key, value in row._mapping.items():
-                    # Convert to lowercase and strip brackets
+                    # Clean the key name (remove brackets and convert to lowercase)
                     clean_key = key.lower()
                     if clean_key.startswith('[') and clean_key.endswith(']'):
                         clean_key = clean_key[1:-1]
+                    
+                    # Handle JSON serialized data
+                    if isinstance(value, str) and (value.startswith('[') and value.endswith(']') or 
+                                                 value.startswith('{') and value.endswith('}')):
+                        try:
+                            value = json.loads(value)
+                        except json.JSONDecodeError:
+                            logger.debug(f"Failed to decode JSON for key {clean_key}: {value}")
+                            pass  # Keep as string if not valid JSON
+                    
+                    # Special handling for roles collection
+                    if collection == "roles" and clean_key == "permissions" and isinstance(value, str):
+                        try:
+                            value = json.loads(value)
+                        except json.JSONDecodeError:
+                            logger.debug(f"Failed to decode permissions JSON: {value}")
+                            # Try to handle as comma-separated string
+                            if ',' in value:
+                                value = [p.strip() for p in value.split(',')]
+                    
                     result_dict[clean_key] = value
                 
                 # Make sure we have the ID
@@ -177,6 +229,23 @@ class SQLServerAdapter(DatabaseAdapter):
             return result_dict
         except Exception as e:
             logger.error(f"Error creating record in {collection}: {e}")
+            logger.error(f"SQL that failed: {sql}")
+            logger.error(f"Parameters: {pprint.pformat(insert_data)}")
+            
+            # Special handling for roles collection
+            if collection == "roles":
+                # For roles, use the name as the ID and return the data
+                if "name" in data:
+                    result_dict["id"] = data["name"]
+                    # Convert permissions back from JSON if needed
+                    if "permissions" in result_dict and isinstance(result_dict["permissions"], str):
+                        try:
+                            result_dict["permissions"] = set(json.loads(result_dict["permissions"]))
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    logger.debug(f"Returning role data with name as ID: {result_dict}")
+                    return result_dict
+        
             # In case of error, return the original data with a generated ID
             if "id" not in result_dict:
                 import uuid
@@ -200,15 +269,26 @@ class SQLServerAdapter(DatabaseAdapter):
         if self._session is None:
             await self.connect()
         
-        # Try to determine if the parameter is an ID or username
+        # Try to determine if the parameter is an ID or username/role name
         is_username = False
+        is_role_name = False
+        
         if collection == "users" and not id_or_username.isdigit() and len(id_or_username) < 50:
             # If it's not a number and not a UUID-like string, it's probably a username
             is_username = True
+        elif collection == "roles":
+            # For roles, we'll treat the parameter as a role name
+            is_role_name = True
+            logger.debug(f"Treating {id_or_username} as a role name")
         
-        # If it's a username, try reading by username first
-        if collection == "users" and is_username:
-            sql_by_username = f"SELECT * FROM {collection} WHERE [username] = :username"
+        # If it's a username or role name, try reading by that first
+        if (collection == "users" and is_username) or (collection == "roles" and is_role_name):
+            if collection == "users":
+                sql_by_username = f"SELECT * FROM {collection} WHERE [username] = :username"
+            else:  # roles
+                # For roles, try to match by name or id
+                sql_by_username = f"SELECT * FROM {collection} WHERE [name] = :username OR [id] = :username"
+                logger.debug(f"Searching for role with name/id: {id_or_username}")
             result = await self._session.execute(sa_text(sql_by_username), {"username": id_or_username})
             row = result.first()
             
@@ -228,13 +308,19 @@ class SQLServerAdapter(DatabaseAdapter):
                         clean_key = clean_key[1:-1]
                     result_dict[clean_key] = value
                     
-                    # Convert JSON strings to Python lists for tags
-                    if clean_key == "tags" and isinstance(value, str):
+                    # Convert JSON strings to Python lists/sets for tags and permissions
+                    if (clean_key == "tags" or clean_key == "permissions") and isinstance(value, str):
                         try:
-                            result_dict[clean_key] = json.loads(value)
+                            if clean_key == "permissions":
+                                result_dict[clean_key] = set(json.loads(value))
+                            else:
+                                result_dict[clean_key] = json.loads(value)
                         except (json.JSONDecodeError, TypeError):
+                            logger.debug(f"Failed to decode JSON for {clean_key}: {value}")
+                            # If it's not valid JSON but it's permissions, try to handle as comma-separated string
+                            if clean_key == "permissions" and ',' in value:
+                                result_dict[clean_key] = set(p.strip() for p in value.split(','))
                             # If it's not valid JSON, keep it as is
-                            pass
                 
                 # Make sure we have the ID
                 if 'id' not in result_dict:
@@ -265,6 +351,10 @@ class SQLServerAdapter(DatabaseAdapter):
             # Try with different approaches for UUID
             # Use TRY_CAST instead of CAST to avoid conversion errors
             sql_by_id = f"SELECT * FROM {collection} WHERE TRY_CAST([id] AS NVARCHAR(50)) = :id"
+        elif collection == "roles":
+            # For roles table, the name is the ID
+            logger.debug(f"Reading role with name: {id_or_username}")
+            sql_by_id = f"SELECT * FROM {collection} WHERE [name] = :id OR [id] = :id"
         else:
             sql_by_id = f"SELECT * FROM {collection} WHERE [id] = :id"
         
@@ -302,10 +392,13 @@ class SQLServerAdapter(DatabaseAdapter):
                     clean_key = clean_key[1:-1]
                 result_dict[clean_key] = value
                 
-                # Convert JSON strings to Python lists for tags
-                if clean_key == "tags" and isinstance(value, str):
+                # Convert JSON strings to Python lists/sets for tags and permissions
+                if (clean_key == "tags" or clean_key == "permissions") and isinstance(value, str):
                     try:
                         result_dict[clean_key] = json.loads(value)
+                        # Convert permissions to set if needed
+                        if clean_key == "permissions":
+                            result_dict[clean_key] = set(result_dict[clean_key])
                     except (json.JSONDecodeError, TypeError):
                         # If it's not valid JSON, keep it as is
                         pass
@@ -375,10 +468,13 @@ class SQLServerAdapter(DatabaseAdapter):
             if collection == "users" and "is_active" in update_data:
                 update_data["disabled"] = not update_data.pop("is_active")
             
-            # Convert Python lists to JSON strings for SQL Server
-            for key, value in update_data.items():
-                if isinstance(value, list):
-                    update_data[key] = json.dumps(value)
+            # Convert Python lists and sets to JSON strings for SQL Server
+            for key, value in list(update_data.items()):
+                if isinstance(value, (list, set)):
+                    update_data[key] = json.dumps(list(value))
+                # Handle enum values
+                elif hasattr(value, 'value'):
+                    update_data[key] = value.value
             
             # Create a SET clause for the update statement
             set_clauses = []
@@ -433,24 +529,6 @@ class SQLServerAdapter(DatabaseAdapter):
             # Update with values from the database
             for key, value in row._mapping.items():
                 # Convert to lowercase and strip brackets
-                clean_key = key.lower()
-                if clean_key.startswith('[') and clean_key.endswith(']'):
-                    clean_key = clean_key[1:-1]
-                updated_dict[clean_key] = value
-                
-                # Convert JSON strings to Python lists for tags
-                if clean_key == "tags" and isinstance(value, str):
-                    try:
-                        updated_dict[clean_key] = json.loads(value)
-                    except (json.JSONDecodeError, TypeError):
-                        # If it's not valid JSON, keep it as is
-                        pass
-            
-            # Make sure we have the ID
-            if 'id' not in updated_dict:
-                # Try all possible variations
-                for id_key in ['[id]', '[ID]', 'ID', 'Id']:
-                    if id_key in row._mapping:
                         updated_dict['id'] = row._mapping[id_key]
                         logger.debug("Found ID using key: %s", id_key)
                         break
@@ -470,6 +548,8 @@ class SQLServerAdapter(DatabaseAdapter):
             await self._session.rollback()
             return None
     
+
+        
     async def delete(self, collection: str, id: str) -> bool:
         """Delete a record by ID.
         
@@ -532,10 +612,32 @@ class SQLServerAdapter(DatabaseAdapter):
             if where_clauses:
                 sql += " WHERE " + " AND ".join(where_clauses)
         
-        # Order by [id] and paginate
-        sql += " ORDER BY [id] OFFSET :skip ROWS FETCH NEXT :limit ROWS ONLY"
+        # Add special handling for roles collection
+        if collection == "roles":
+            # For roles, we don't use pagination to avoid issues with string IDs
+            logger.debug(f"Using simplified query for roles collection")
+            # No ORDER BY or pagination for roles to avoid SQL errors
+        else:
+            # For other collections, use standard pagination
+            sql += " ORDER BY [id] OFFSET :skip ROWS FETCH NEXT :limit ROWS ONLY"
         
-        result = await self._session.execute(sa_text(sql), params)
+        try:
+            logger.debug(f"Executing SQL: {sql} with params: {params}")
+            result = await self._session.execute(sa_text(sql), params)
+        except Exception as e:
+            logger.error(f"Error executing list query for {collection}: {str(e)}")
+            logger.error(f"SQL: {sql}, Params: {params}")
+            # For roles, try a simpler query without pagination as fallback
+            if collection == "roles":
+                try:
+                    simple_sql = f"SELECT * FROM {collection}"
+                    logger.debug(f"Trying simpler SQL for roles: {simple_sql}")
+                    result = await self._session.execute(sa_text(simple_sql))
+                except Exception as inner_e:
+                    logger.error(f"Error with fallback query: {str(inner_e)}")
+                    raise
+            else:
+                raise
         
         records = []
         for row in result.all():
@@ -565,10 +667,13 @@ class SQLServerAdapter(DatabaseAdapter):
                     clean_key = clean_key[1:-1]
                 result_dict[clean_key] = value
                 
-                # Convert JSON strings to Python lists for tags
-                if clean_key == "tags" and isinstance(value, str):
+                # Convert JSON strings to Python lists/sets for tags and permissions
+                if (clean_key == "tags" or clean_key == "permissions") and isinstance(value, str):
                     try:
                         result_dict[clean_key] = json.loads(value)
+                        # Convert permissions to set if needed
+                        if clean_key == "permissions":
+                            result_dict[clean_key] = set(result_dict[clean_key])
                     except (json.JSONDecodeError, TypeError):
                         # If it's not valid JSON, keep it as is
                         pass

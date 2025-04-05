@@ -87,6 +87,9 @@ def setup_role_middleware(app: FastAPI) -> RoleMiddleware:
     # Protect admin paths
     role_middleware.protect_path("/api/v1/admin", [Role.ADMIN.value])
     
+    # Protect editor paths - allow both admin and editor roles
+    role_middleware.protect_path("/api/v1/notes/editor", [Role.ADMIN.value, Role.EDITOR.value])
+    
     # Create a middleware function that follows FastAPI's middleware pattern
     @app.middleware("http")
     async def role_based_access_control(request: Request, call_next):

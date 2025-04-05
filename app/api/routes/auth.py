@@ -18,7 +18,7 @@ from app.schemas.users import UserCreate, UserResponse, Token
 router = APIRouter(tags=["authentication"])
 
 
-@router.post("/token", response_model=Token)
+@router.post("/token", response_model=Token, summary="Login and get access token", description="OAuth2 compatible token login, get an access token for future requests")
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db_adapter: DatabaseAdapter = Depends(get_db_adapter),

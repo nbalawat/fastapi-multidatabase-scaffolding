@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.security import get_current_active_user, has_role
 from app.db.base import DatabaseAdapter
-from app.main import get_db_adapter
+from app.api.dependencies import get_db_adapter
 from app.schemas.users import UserResponse, UserUpdate
 
 # Create a router for user endpoints

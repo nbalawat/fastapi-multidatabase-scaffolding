@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 class Role(str, Enum):
     """User roles for authorization."""
     ADMIN = "admin"
+    EDITOR = "editor"
     USER = "user"
     GUEST = "guest"
 

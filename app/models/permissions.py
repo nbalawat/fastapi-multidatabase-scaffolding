@@ -111,6 +111,17 @@ DEFAULT_ROLE_PERMISSIONS = {
             Permission.NOTE_DELETE,
         }
     ),
+    "editor": RolePermissions(
+        name="editor",
+        description="Editor with note management permissions",
+        permissions={
+            Permission.USER_READ,
+            Permission.NOTE_CREATE,
+            Permission.NOTE_READ,
+            Permission.NOTE_UPDATE,
+            Permission.NOTE_DELETE,
+        }
+    ),
     "guest": RolePermissions(
         name="guest",
         description="Guest with limited access",
