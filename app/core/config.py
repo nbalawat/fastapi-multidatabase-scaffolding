@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     # MongoDB specific settings (only used if db_type is mongodb)
     mongodb_connection_string: Optional[str] = None
     
+    # SQL Server specific settings (only used if db_type is sqlserver)
+    sqlserver_host: str = Field(default="localhost")
+    sqlserver_port: int = Field(default=1433)
+    sqlserver_user: str = Field(default="sa")
+    sqlserver_password: str = Field(default="YourStrong@Passw0rd")
+    sqlserver_db: str = Field(default="fastapi_db")
+    
     # JWT settings
     jwt_secret_key: str = "change_this_in_production"
     jwt_algorithm: str = "HS256"
@@ -36,7 +43,7 @@ class Settings(BaseSettings):
     rate_limit_timeframe: int = 60  # seconds
     
     # Logging
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "DEBUG"
     
     # Admin user settings
     admin_email: str = "admin@example.com"

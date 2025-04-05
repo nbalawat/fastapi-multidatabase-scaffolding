@@ -8,6 +8,7 @@ from app.api.dependencies import get_db_adapter
 from app.db.postgres.adapter import PostgresAdapter
 from app.db.mysql.adapter import MySQLAdapter
 from app.db.mongodb.adapter import MongoDBAdapter
+from app.db.sqlserver.adapter import SQLServerAdapter
 
 # Create the FastAPI application
 app = FastAPI(

@@ -42,7 +42,7 @@ dev = [
 ]
 
 sqlserver = [
-    "pyodbc>=4.0.39",  # SQL Server driver
+    "pymssql>=2.2.8",  # SQL Server driver
 ]
 
 [tool.pytest.ini_options]

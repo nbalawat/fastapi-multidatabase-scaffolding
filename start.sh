@@ -28,6 +28,27 @@ wait_for_mongodb() {
     return 1
 }
 
+# Function to check if SQL Server is ready
+wait_for_sqlserver() {
+    echo "Waiting for SQL Server to be ready..."
+    max_retries=30
+    retries=0
+    
+    while [ $retries -lt $max_retries ]; do
+        if /opt/mssql-tools18/bin/sqlcmd -S $SQLSERVER_HOST,$SQLSERVER_PORT -U $SQLSERVER_USER -P $SQLSERVER_PASSWORD -Q "SELECT 1" &>/dev/null; then
+            echo "SQL Server is ready!"
+            return 0
+        fi
+        
+        echo "SQL Server not ready yet. Retrying in 2 seconds..."
+        sleep 2
+        retries=$((retries + 1))
+    done
+    
+    echo "Timed out waiting for SQL Server to be ready"
+    return 1
+}
+
 # Wait for the appropriate database based on DB_TYPE
 if [ "$DB_TYPE" = "mongodb" ]; then
     # Install mongosh if not available
@@ -40,9 +61,16 @@ if [ "$DB_TYPE" = "mongodb" ]; then
     fi
     
     wait_for_mongodb || echo "Proceeding anyway..."
+elif [ "$DB_TYPE" = "sqlserver" ]; then
+    # Check if SQL Server tools are available
+    if [ ! -f /opt/mssql-tools18/bin/sqlcmd ]; then
+        echo "SQL Server tools not found. Make sure msodbcsql18 is installed."
+    else
+        wait_for_sqlserver || echo "Proceeding anyway..."
+    fi
 else
     # Simple wait for other database types
-    echo "Using simple wait for non-MongoDB database..."
+    echo "Using simple wait for non-MongoDB/SQL Server database..."
     sleep 5
 fi
 
@@ -69,6 +97,10 @@ elif [ "$DB_TYPE" = "mysql" ]; then
     # Initialize MySQL database
     echo "Initializing MySQL..."
     # Add MySQL initialization script here if needed
+elif [ "$DB_TYPE" = "sqlserver" ]; then
+    # Initialize SQL Server database
+    echo "Initializing SQL Server..."
+    python -m app.scripts.init_sqlserver
 fi
 
 # Create admin user

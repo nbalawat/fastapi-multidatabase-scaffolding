@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     git \
+    freetds-dev \
+    freetds-bin \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv using pip
@@ -25,7 +27,7 @@ COPY . /app/
 RUN chmod +x /app/start.sh
 
 # Install dependencies using uv with --system flag
-RUN uv pip install --system fastapi uvicorn pydantic pydantic-settings python-jose passlib python-multipart sqlalchemy asyncpg aiomysql motor polars httpx tenacity structlog email-validator
+RUN uv pip install --system fastapi uvicorn pydantic pydantic-settings python-jose passlib python-multipart sqlalchemy asyncpg aiomysql motor polars httpx tenacity structlog email-validator pymssql
 
 # Install development dependencies
 RUN uv pip install --system pytest pytest-asyncio pytest-cov black isort mypy ruff

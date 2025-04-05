@@ -12,18 +12,26 @@ services:
       - API_PREFIX=/api/v1
       - SECRET_KEY=changethisinsecretkey
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      - DB_TYPE=mongodb  # Using MongoDB
-      - DB_HOST=mongodb  # Using the MongoDB service name
-      - DB_PORT=27017    # MongoDB default port
+      # Default DB settings (can be overridden at runtime)
+      - DB_TYPE=mongodb
+      - DB_HOST=mongodb
+      - DB_PORT=27017
       - DB_USER=mongodb
       - DB_PASSWORD=mongodb
       - DB_NAME=fastapi
+      # SQL Server specific settings
+      - SQLSERVER_HOST=sqlserver
+      - SQLSERVER_PORT=1433
+      - SQLSERVER_USER=sa
+      - SQLSERVER_PASSWORD=YourStrong@Passw0rd
+      - SQLSERVER_DB=fastapi_db
     volumes:
       - ../:/app
     depends_on:
       - postgres
       - mysql
       - mongodb
+      - sqlserver
     command: |
       /bin/sh -c 'sh /app/start.sh'
 
@@ -60,8 +68,20 @@ services:
       - MONGO_INITDB_DATABASE=fastapi
     volumes:
       - mongodb_data:/data/db
+      
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+      - MSSQL_PID=Developer
+    volumes:
+      - sqlserver_data:/var/opt/mssql
 
 volumes:
   postgres_data:
   mysql_data:
   mongodb_data:
+  sqlserver_data:
