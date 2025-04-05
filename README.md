@@ -40,11 +40,61 @@ This project uses `uv` for dependency management and follows test-driven develop
 
 ### Testing
 
-Run tests with pytest:
+This project uses pytest for testing. You can run tests for all database types or target specific database implementations.
+
+#### Running All Tests
+
+To run all tests:
 
 ```bash
-pytest
+python -m pytest
 ```
+
+#### Database-Specific Tests
+
+To run tests for a specific database type:
+
+##### PostgreSQL Tests
+
+```bash
+python -m pytest app/scripts/tests/test_crud_postgres.py
+python -m pytest app/scripts/tests/test_api_postgres.py
+python -m pytest app/scripts/tests/test_rbac_postgres.py
+```
+
+##### MongoDB Tests
+
+```bash
+python -m pytest app/scripts/tests/test_crud_mongodb.py
+python -m pytest app/scripts/tests/test_api_mongodb.py
+python -m pytest app/scripts/tests/test_rbac_mongodb.py
+```
+
+##### SQL Server Tests
+
+```bash
+python -m pytest app/scripts/tests/test_crud_sqlserver.py
+python -m pytest app/scripts/tests/test_api_sqlserver.py
+python -m pytest app/scripts/tests/test_rbac_sqlserver.py
+```
+
+#### Running Specific Test Functions
+
+To run a specific test function:
+
+```bash
+python -m pytest app/scripts/tests/test_crud_sqlserver.py::test_create_note
+```
+
+#### Test Requirements
+
+Before running tests, ensure that:
+
+1. The appropriate database servers are running and accessible
+2. Database initialization scripts have been run
+3. The environment variables are correctly set for the target database
+
+You can use the Docker setup to ensure all required services are available.
 
 ## Docker
 

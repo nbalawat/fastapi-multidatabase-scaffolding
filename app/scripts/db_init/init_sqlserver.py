@@ -178,12 +178,17 @@ async def create_admin_user() -> None:
                 # Create admin user
                 hashed_password = get_password_hash(settings.admin_password)
                 
+                # Generate a UUID for the admin user
+                import uuid
+                admin_id = str(uuid.uuid4())
+                
                 await session.execute(
                     sa_text("""
-                    INSERT INTO users (username, email, hashed_password, full_name, disabled, role)
-                    VALUES (:username, :email, :hashed_password, :full_name, :disabled, :role)
+                    INSERT INTO users (id, username, email, hashed_password, full_name, disabled, role)
+                    VALUES (:id, :username, :email, :hashed_password, :full_name, :disabled, :role)
                     """),
                     {
+                        "id": admin_id,
                         "username": settings.admin_username,
                         "email": settings.admin_email,
                         "hashed_password": hashed_password,

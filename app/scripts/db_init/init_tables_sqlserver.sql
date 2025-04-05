@@ -3,11 +3,28 @@
 -- We're already connected to the correct database from Python
 -- so we don't need to create it or use it here
 
+-- Drop existing tables if they exist to ensure clean schema
+IF OBJECT_ID(N'[dbo].[items]', N'U') IS NOT NULL
+    DROP TABLE [dbo].[items];
+GO
+
+IF OBJECT_ID(N'[dbo].[notes]', N'U') IS NOT NULL
+    DROP TABLE [dbo].[notes];
+GO
+
+IF OBJECT_ID(N'[dbo].[users]', N'U') IS NOT NULL
+    DROP TABLE [dbo].[users];
+GO
+
+IF OBJECT_ID(N'[dbo].[roles]', N'U') IS NOT NULL
+    DROP TABLE [dbo].[roles];
+GO
+
 -- Users table
 IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[users]') AND type in (N'U'))
 BEGIN
     CREATE TABLE [dbo].[users] (
-        [id] INT IDENTITY(1,1) PRIMARY KEY,
+        [id] NVARCHAR(255) PRIMARY KEY,
         [email] NVARCHAR(255) NOT NULL,
         [username] NVARCHAR(255) NOT NULL,
         [hashed_password] NVARCHAR(255) NOT NULL,
@@ -30,7 +47,7 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[notes]') AND type in (N'U'))
 BEGIN
     CREATE TABLE [dbo].[notes] (
-        [id] INT IDENTITY(1,1) PRIMARY KEY,
+        [id] NVARCHAR(255) PRIMARY KEY,
         [title] NVARCHAR(255) NOT NULL,
         [content] NVARCHAR(MAX) NULL,
         [visibility] NVARCHAR(50) DEFAULT 'private',
@@ -49,10 +66,10 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[items]') AND type in (N'U'))
 BEGIN
     CREATE TABLE [dbo].[items] (
-        [id] INT IDENTITY(1,1) PRIMARY KEY,
+        [id] NVARCHAR(255) PRIMARY KEY,
         [title] NVARCHAR(255) NOT NULL,
         [description] NVARCHAR(MAX) NULL,
-        [owner_id] INT NULL,
+        [owner_id] NVARCHAR(255) NULL,
         [created_at] DATETIME2 DEFAULT GETUTCDATE()
     );
 

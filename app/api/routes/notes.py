@@ -1,9 +1,13 @@
 """API routes for notes using MongoDB."""
 from datetime import datetime
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.security import OAuth2PasswordBearer
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 from app.api.dependencies import get_current_active_user, get_current_user, get_db_adapter
 from app.db.base import DatabaseAdapter
@@ -74,14 +78,30 @@ async def get_note(
     Raises:
         HTTPException: If the note is not found or the user doesn't have permission
     """
+    # Log the note ID we're trying to retrieve
+    logger.debug(f"Attempting to get note with ID: {note_id}")
+    
     # Get note from database
     note = await db_adapter.read("notes", note_id)
     
     if not note:
+        logger.error(f"Note not found with ID: {note_id}")
+        
+        # Try to get all notes to see what's available
+        try:
+            all_notes = await db_adapter.list("notes", skip=0, limit=100)
+            logger.debug(f"Available notes in database: {len(all_notes)}")
+            for idx, n in enumerate(all_notes):
+                logger.debug(f"Note {idx}: ID={n.get('id')}, Title={n.get('title')}")
+        except Exception as e:
+            logger.error(f"Error listing notes: {e}")
+            
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Note not found",
         )
+    
+    logger.debug(f"Found note: {note}")
     
     # Check if user has permission to access this note
     user_role = current_user.role
