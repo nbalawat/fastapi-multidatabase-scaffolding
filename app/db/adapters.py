@@ -389,23 +389,48 @@ class SQLServerAdapter(DatabaseAdapter):
                     "TDS"
                 ]
                 
-                # Try each driver until one works
+                # Try to connect with each driver
                 for driver in drivers:
                     try:
-                        conn_str = (
-                            f"DRIVER={{{driver}}};"
-                            f"SERVER={self.settings.db_host},{self.settings.db_port};"
-                            f"DATABASE={self.settings.db_name};"
-                            f"UID={self.settings.db_user};"
-                            f"PWD={self.settings.db_password};"
+                        # First connect to master database
+                        master_conn_str = (
+                            f"DRIVER={{{driver}}};SERVER={self.settings.db_host},{self.settings.db_port};" 
+                            f"DATABASE=master;UID={self.settings.db_user};PWD={self.settings.db_password}"
                         )
                         
-                        logger.info(f"Attempting to connect with driver: {driver}")
-                        self._connection = await aioodbc.connect(dsn=conn_str)
+                        logger.info(f"Attempting to connect to master database with driver: {driver}")
+                        master_conn = await aioodbc.connect(dsn=master_conn_str)
+                        
+                        # Check if our database exists and create it if it doesn't
+                        async with await master_conn.cursor() as cursor:
+                            # Check if database exists
+                            check_db_query = f"SELECT database_id FROM sys.databases WHERE name = '{self.settings.db_name}'"
+                            await cursor.execute(check_db_query)
+                            row = await cursor.fetchone()
+                            
+                            if not row:
+                                # Database doesn't exist, create it
+                                logger.info(f"Database {self.settings.db_name} does not exist, creating it...")
+                                create_db_query = f"CREATE DATABASE {self.settings.db_name}"
+                                await cursor.execute(create_db_query)
+                                logger.info(f"Database {self.settings.db_name} created successfully")
+                        
+                        # Close master connection
+                        await master_conn.close()
+                        
+                        # Now connect to our database
+                        conn_str = (
+                            f"DRIVER={{{driver}}};SERVER={self.settings.db_host},{self.settings.db_port};" 
+                            f"DATABASE={self.settings.db_name};UID={self.settings.db_user};PWD={self.settings.db_password};" 
+                            f"TrustServerCertificate=yes;MultipleActiveResultSets=True"
+                        )
+                        
+                        logger.info(f"Attempting to connect to {self.settings.db_name} with driver: {driver}")
+                        self._connection = await aioodbc.connect(dsn=conn_str, autocommit=True)
                         logger.info(f"Successfully connected using driver: {driver}")
                         break
                     except Exception as e:
-                        logger.warning(f"Failed to connect with driver {driver}: {e}")
+                        logger.warning(f"Failed with driver {driver}: {e}")
                 
                 # If no connection was established, raise an exception
                 if self._connection is None:
@@ -421,193 +446,24 @@ class SQLServerAdapter(DatabaseAdapter):
         """Disconnect from the SQL Server database."""
         if self._connection:
             await self._connection.close()
-            self._client = None
             self._connection = None
             logger.info("Disconnected from SQL Server database")
     
-    async def create(self, collection: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a new record in the specified collection.
-        
-        Args:
-            collection: The name of the table
-            data: The data to insert
-            
-        Returns:
-            The created record with any generated fields
-        """
-        # Build the SQL query
-        fields = list(data.keys())
-        placeholders = ["?" for _ in range(len(fields))]
-        values = [data[field] for field in fields]
-        
-        query = f"""
-        INSERT INTO {collection} ({', '.join(fields)})
-        VALUES ({', '.join(placeholders)});
-        SELECT * FROM {collection} WHERE id = ?;
-        """
-        
-        # Execute the query
-        async with self._connection.cursor() as cursor:
-            await cursor.execute(query, values + [data["id"]])
-            row = await cursor.fetchone()
-            
-            # Get column names
-            columns = [column[0] for column in cursor.description]
-            
-            # Convert the row to a dictionary
-            return dict(zip(columns, row)) if row else None
-    
-    async def read(self, collection: str, id_or_key: Any, field: str = "id") -> Optional[Dict[str, Any]]:
-        """Read a record by its ID or another field.
-        
-        Args:
-            collection: The name of the table
-            id_or_key: The value to search for
-            field: The field to search on (default: 'id')
-            
-        Returns:
-            The record if found, None otherwise
-        """
-        query = f"SELECT * FROM {collection} WHERE {field} = ?"
-        
-        try:
-            async with self._connection.cursor() as cursor:
-                logger.debug(f"Executing query: {query} with value: {id_or_key}")
-                await cursor.execute(query, [id_or_key])
-                row = await cursor.fetchone()
-                
-                if not row:
-                    return None
-                    
-                # Get column names
-                columns = [column[0] for column in cursor.description]
-                
-                # Convert the row to a dictionary
-                return dict(zip(columns, row))
-        except Exception as e:
-            logger.error(f"Error reading from {collection} with {field}={id_or_key}: {e}")
-            raise
-    
-    async def update(self, collection: str, id: Any, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Update a record by its ID.
-        
-        Args:
-            collection: The name of the table
-            id: The ID of the record to update
-            data: The data to update
-            
-        Returns:
-            The updated record if found, None otherwise
-        """
-        # Build the SET clause
-        fields = list(data.keys())
-        set_clause = ", ".join([f"{field} = ?" for field in fields])
-        values = [data[field] for field in fields]
-        
-        query = f"""
-        UPDATE {collection}
-        SET {set_clause}
-        WHERE id = ?;
-        SELECT * FROM {collection} WHERE id = ?;
-        """
-        
-        # Execute the query
-        async with self._connection.cursor() as cursor:
-            await cursor.execute(query, values + [id, id])
-            row = await cursor.fetchone()
-            
-            if not row:
-                return None
-                
-            # Get column names
-            columns = [column[0] for column in cursor.description]
-            
-            # Convert the row to a dictionary
-            return dict(zip(columns, row))
-    
-    async def delete(self, collection: str, id: Any) -> bool:
-        """Delete a record by its ID.
-        
-        Args:
-            collection: The name of the table
-            id: The ID of the record to delete
-            
-        Returns:
-            True if the record was deleted, False otherwise
-        """
-        query = f"DELETE FROM {collection} WHERE id = ?"
-        
-        async with self._connection.cursor() as cursor:
-            await cursor.execute(query, [id])
-            return cursor.rowcount > 0
-    
-    async def list(self, collection: str, skip: int = 0, limit: int = 100, query: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        """List records from a collection with pagination and optional filtering.
-        
-        Args:
-            collection: The name of the table
-            skip: Number of records to skip
-            limit: Maximum number of records to return
-            query: Optional dictionary of field-value pairs to filter by
-            
-        Returns:
-            A list of records
-        """
-        # Build the WHERE clause if query is provided
-        where_clause = ""
-        values = []
-        
-        if query:
-            conditions = []
-            for field, value in query.items():
-                conditions.append(f"{field} = ?")
-                values.append(value)
-            
-            if conditions:
-                where_clause = f"WHERE {' AND '.join(conditions)}"
-        
-        # Build the SQL query
-        sql_query = f"""
-        SELECT * FROM {collection}
-        {where_clause}
-        ORDER BY id
-        OFFSET {skip} ROWS
-        FETCH NEXT {limit} ROWS ONLY
-        """
-        
-        # Execute the query
-        async with self._connection.cursor() as cursor:
-            await cursor.execute(sql_query, values)
-            rows = await cursor.fetchall()
-            
-            if not rows:
-                return []
-                
-            # Get column names
-            columns = [column[0] for column in cursor.description]
-            
-            # Convert the rows to dictionaries
-            return [dict(zip(columns, row)) for row in rows]
-
-    
-    async def disconnect(self) -> None:
-        """Disconnect from the SQL Server database."""
-        if self._connection:
-            await self._connection.close()
-            self._connection = None
-            logger.info("Disconnected from SQL Server database")
-            
     async def cursor(self):
-        """Get a cursor for executing SQL statements.
+        """Get a cursor for executing SQL queries.
         
         Returns:
-            A database cursor for executing SQL statements
+            A database cursor
+            
+        Raises:
+            Exception: If the connection is not established
         """
-        if self._connection is None:
-            raise ValueError("Not connected to SQL Server database")
-        # Return the connection's cursor method directly (not awaited)
-        # This allows it to be used in an async with statement
-        return self._connection.cursor()
+        if not self._connection:
+            await self.connect()
+            if not self._connection:
+                raise Exception("Failed to establish database connection")
+        
+        return await self._connection.cursor()
     
     async def create(self, collection: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new record in the specified collection.
@@ -621,25 +477,39 @@ class SQLServerAdapter(DatabaseAdapter):
         """
         # Build the SQL query
         fields = list(data.keys())
-        placeholders = ["?" for _ in range(len(fields))]
-        values = [data[field] for field in fields]
         
+        # Special handling for UUIDs in SQL Server
+        placeholders = []
+        values = []
+        
+        for field in fields:
+            value = data[field]
+            # Handle UUIDs specially for SQL Server
+            if field == "id" and isinstance(value, str):
+                # Use CAST for UUID values
+                placeholders.append(f"CAST(? AS UNIQUEIDENTIFIER)")
+            else:
+                placeholders.append("?")
+            values.append(value)
+        
+        # For SQL Server, we need to use OUTPUT clause to get inserted values
+        # since SCOPE_IDENTITY() only works for identity columns
         query = f"""
         INSERT INTO {collection} ({', '.join(fields)})
+        OUTPUT INSERTED.*
         VALUES ({', '.join(placeholders)});
-        SELECT * FROM {collection} WHERE id = SCOPE_IDENTITY();
         """
         
         # Execute the query
-        async with self._connection.cursor() as cursor:
-            await cursor.execute(query, values)
-            row = await cursor.fetchone()
+        async with await self.cursor() as c:
+            await c.execute(query, values)
+            row = await c.fetchone()
             
             if not row:
                 return None
                 
             # Get column names
-            columns = [column[0] for column in cursor.description]
+            columns = [column[0] for column in c.description]
             
             # Convert the row to a dictionary
             return dict(zip(columns, row))
@@ -655,19 +525,24 @@ class SQLServerAdapter(DatabaseAdapter):
         Returns:
             The record if found, None otherwise
         """
-        query = f"SELECT * FROM {collection} WHERE {field} = ?"
+        # Special handling for UUID fields in SQL Server
+        if field == "id" and isinstance(id_or_key, str):
+            # For SQL Server, we need to cast string UUIDs to UNIQUEIDENTIFIER
+            query = f"SELECT * FROM {collection} WHERE {field} = CAST(? AS UNIQUEIDENTIFIER)"
+        else:
+            query = f"SELECT * FROM {collection} WHERE {field} = ?"
         
         try:
-            async with self._connection.cursor() as cursor:
+            async with await self.cursor() as c:
                 logger.debug(f"Executing query: {query} with value: {id_or_key}")
-                await cursor.execute(query, [id_or_key])
-                row = await cursor.fetchone()
+                await c.execute(query, [id_or_key])
+                row = await c.fetchone()
                 
                 if not row:
                     return None
                     
                 # Get column names
-                columns = [column[0] for column in cursor.description]
+                columns = [column[0] for column in c.description]
                 
                 # Convert the row to a dictionary
                 return dict(zip(columns, row))
@@ -691,23 +566,33 @@ class SQLServerAdapter(DatabaseAdapter):
         set_clause = ", ".join([f"{field} = ?" for field in fields])
         values = [data[field] for field in fields]
         
-        query = f"""
-        UPDATE {collection}
-        SET {set_clause}
-        WHERE id = ?;
-        SELECT * FROM {collection} WHERE id = ?;
-        """
+        # Special handling for UUID fields in SQL Server
+        if isinstance(id, str):
+            # For SQL Server, we need to cast string UUIDs to UNIQUEIDENTIFIER
+            query = f"""
+            UPDATE {collection}
+            SET {set_clause}
+            WHERE id = CAST(? AS UNIQUEIDENTIFIER);
+            SELECT * FROM {collection} WHERE id = CAST(? AS UNIQUEIDENTIFIER);
+            """
+        else:
+            query = f"""
+            UPDATE {collection}
+            SET {set_clause}
+            WHERE id = ?;
+            SELECT * FROM {collection} WHERE id = ?;
+            """
         
         # Execute the query
-        async with self._connection.cursor() as cursor:
-            await cursor.execute(query, values + [id, id])
-            row = await cursor.fetchone()
+        async with await self.cursor() as c:
+            await c.execute(query, values + [id, id])
+            row = await c.fetchone()
             
             if not row:
                 return None
                 
             # Get column names
-            columns = [column[0] for column in cursor.description]
+            columns = [column[0] for column in c.description]
             
             # Convert the row to a dictionary
             return dict(zip(columns, row))
@@ -722,11 +607,16 @@ class SQLServerAdapter(DatabaseAdapter):
         Returns:
             True if the record was deleted, False otherwise
         """
-        query = f"DELETE FROM {collection} WHERE id = ?"
+        # Special handling for UUID fields in SQL Server
+        if isinstance(id, str):
+            # For SQL Server, we need to cast string UUIDs to UNIQUEIDENTIFIER
+            query = f"DELETE FROM {collection} WHERE id = CAST(? AS UNIQUEIDENTIFIER)"
+        else:
+            query = f"DELETE FROM {collection} WHERE id = ?"
         
-        async with self._connection.cursor() as cursor:
-            await cursor.execute(query, [id])
-            return cursor.rowcount > 0
+        async with await self.cursor() as c:
+            await c.execute(query, [id])
+            return c.rowcount > 0
     
     async def list(self, collection: str, skip: int = 0, limit: int = 100, query: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """List records from a collection with pagination and optional filtering.
@@ -747,7 +637,11 @@ class SQLServerAdapter(DatabaseAdapter):
         if query:
             conditions = []
             for field, value in query.items():
-                conditions.append(f"{field} = ?")
+                # Special handling for UUID fields in SQL Server
+                if field == "id" and isinstance(value, str):
+                    conditions.append(f"{field} = CAST(? AS UNIQUEIDENTIFIER)")
+                else:
+                    conditions.append(f"{field} = ?")
                 values.append(value)
             
             if conditions:
@@ -763,15 +657,15 @@ class SQLServerAdapter(DatabaseAdapter):
         """
         
         # Execute the query
-        async with self._connection.cursor() as cursor:
-            await cursor.execute(sql_query, values)
-            rows = await cursor.fetchall()
+        async with await self.cursor() as c:
+            await c.execute(sql_query, values)
+            rows = await c.fetchall()
             
             if not rows:
                 return []
                 
             # Get column names
-            columns = [column[0] for column in cursor.description]
+            columns = [column[0] for column in c.description]
             
             # Convert the rows to dictionaries
             return [dict(zip(columns, row)) for row in rows]

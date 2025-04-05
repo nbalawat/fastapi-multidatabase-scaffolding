@@ -89,8 +89,10 @@ class DatabaseInitializer:
                         await conn.execute(statement)
                     elif db_type == "sqlserver":
                         # SQL Server uses a cursor
-                        async with conn.cursor() as cursor:
-                            await cursor.execute(statement)
+                        # We need to await the cursor method first
+                        cursor = await conn.cursor()
+                        async with cursor as c:
+                            await c.execute(statement)
                     else:
                         logger.warning(f"Unsupported SQL database type for execution: {db_type}")
                         

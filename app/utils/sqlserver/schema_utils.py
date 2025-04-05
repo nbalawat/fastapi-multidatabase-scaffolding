@@ -34,7 +34,11 @@ def prepare_sqlserver_model(data: Dict[str, Any]) -> Dict[str, Any]:
     # Generate ID if not present
     if "id" not in db_model:
         db_model["id"] = str(uuid4())
-        
+    
+    # For SQL Server, we need to handle UUIDs specially
+    # But we don't need to modify the UUID string itself
+    # SQL Server adapter will handle the proper formatting during query execution
+    
     return db_model
 
 def convert_from_sqlserver_model(data: Dict[str, Any]) -> Dict[str, Any]:

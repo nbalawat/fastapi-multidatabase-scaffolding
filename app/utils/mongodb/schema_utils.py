@@ -57,11 +57,12 @@ def convert_from_mongodb_model(data: Dict[str, Any]) -> Dict[str, Any]:
         
     # Ensure created_at and updated_at are datetime objects
     for field in ["created_at", "updated_at"]:
-        if field in api_model and not isinstance(api_model[field], datetime):
+        if field in api_model and api_model[field] is not None and not isinstance(api_model[field], datetime):
             try:
                 api_model[field] = datetime.fromisoformat(api_model[field])
             except (ValueError, TypeError):
                 logger.warning(f"Could not convert {field} to datetime: {api_model[field]}")
+        # If the field is None, keep it as None - this is valid for updated_at
         
     return api_model
 
