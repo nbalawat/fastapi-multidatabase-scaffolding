@@ -199,6 +199,27 @@ To interact with the RBAC system through Swagger UI:
    - Ensure your FastAPI application is running
    - Navigate to `http://localhost:8000/docs` in your browser
 
+## UUID Handling
+
+The application includes robust UUID handling throughout the authentication and data processing pipeline:
+
+- **Automatic UUID Conversion**: The system automatically converts UUID objects to strings in API responses to ensure compatibility with JSON serialization and client applications.
+- **Flexible ID Fields**: Models support both string and UUID types for ID fields, allowing flexibility in how IDs are stored and processed.
+- **User Authentication**: When creating resources that require user association (like notes), the user ID is automatically extracted from the authentication token and properly formatted.
+
+### Example: Creating Notes with Authenticated User
+
+When creating a note while authenticated, you don't need to specify the user ID - it's automatically set from your authentication token:
+
+```python
+# NotesController.create_with_user method handles this automatically
+async def create_with_user(self, data: NoteCreate, user: User) -> Dict[str, Any]:
+    data_dict = data.model_dump() if hasattr(data, "model_dump") else data.dict()
+    # Set the user_id from the authenticated user
+    data_dict["user_id"] = str(user.id) if hasattr(user.id, 'hex') else user.id
+    return await self.create(data_dict)
+```
+
 2. **Authenticate as Admin**:
    - Click on the `/api/v1/token` endpoint (POST)
    - Click "Try it out"
