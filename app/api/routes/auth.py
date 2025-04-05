@@ -11,7 +11,7 @@ from app.core.security import (
 )
 from app.db.base import DatabaseAdapter
 from app.api.dependencies import get_db_adapter
-from app.models.users import UserInDB, Role
+from app.models.users.model import UserInDB, Role
 from app.schemas.users import UserCreate, UserResponse, Token
 
 # Create a router for authentication endpoints

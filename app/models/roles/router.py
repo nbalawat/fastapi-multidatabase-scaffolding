@@ -1,24 +1,20 @@
-"""API routes for role management."""
-import json
-import logging
-from typing import Dict, List, Optional, Set
+"""
+Role router for the application.
 
+This module provides API routes for role management operations.
+"""
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 
-from app.api.dependencies import get_current_active_user, get_db_adapter
 from app.db.base import DatabaseAdapter
-from app.models.permissions import DEFAULT_ROLE_PERMISSIONS, Permission, RolePermissions
+from app.api.dependencies.db import get_db_adapter
+from app.api.dependencies.auth import get_current_active_user
+from app.models.roles.controller import RolesController
+from app.models.roles.model import RolePermissions
 from app.models.users.model import Role, User
 
-# Configure logger
-logger = logging.getLogger(__name__)
-
 # Create router
-router = APIRouter(tags=["roles"])
-
-
-
-
+router = APIRouter(prefix="/roles", tags=["roles"])
 
 @router.get(
     "",
@@ -49,10 +45,8 @@ async def list_roles(
             detail="Admin access required",
         )
     
-    # Always return default roles for now to avoid database errors
-    logger.info("Using default roles to ensure consistent behavior")
-    return list(DEFAULT_ROLE_PERMISSIONS.values())
-
+    controller = RolesController(db_adapter)
+    return await controller.list_roles()
 
 @router.get(
     "/{role_name}",
@@ -85,20 +79,16 @@ async def get_role(
             detail="Admin access required",
         )
     
-    # Skip database lookup and check default roles directly
-    logger.info(f"Looking up role: {role_name}")
+    controller = RolesController(db_adapter)
+    role = await controller.get_role(role_name)
     
-    # Check if role exists in default roles
-    if role_name in DEFAULT_ROLE_PERMISSIONS:
-        logger.info(f"Found role {role_name} in default roles")
-        return DEFAULT_ROLE_PERMISSIONS[role_name]
-    else:
-        logger.warning(f"Role {role_name} not found in default roles")
+    if not role:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Role {role_name} not found",
         )
-
+    
+    return role
 
 @router.post(
     "",
@@ -132,32 +122,16 @@ async def create_role(
             detail="Admin access required",
         )
     
-    # Check if role already exists
-    existing_role = await db_adapter.read("roles", role.name)
+    controller = RolesController(db_adapter)
+    created_role = await controller.create_role(role.dict())
     
-    if existing_role:
+    if not created_role:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Role {role.name} already exists",
         )
     
-    # Instead of creating in database, create a temporary role in memory
-    logger.info(f"Creating temporary role: {role.name}")
-    
-    # Create a new role permissions object with the provided data
-    created_role = {
-        "name": role.name,
-        "description": role.description,
-        "permissions": role.permissions
-    }
-    
-    # Add to default roles for this session
-    DEFAULT_ROLE_PERMISSIONS[role.name] = RolePermissions(**created_role)
-    
-    logger.info(f"Added role {role.name} to default roles")
-    
-    return RolePermissions(**created_role)
-
+    return created_role
 
 @router.put(
     "/{role_name}",
@@ -183,7 +157,7 @@ async def update_role(
         The updated role
         
     Raises:
-        HTTPException: If the user is not an admin or the role is not found
+        HTTPException: If the user is not an admin, the role is not found, or it's a built-in role
     """
     # Check if user is admin
     if current_user.role != Role.ADMIN.value:
@@ -192,40 +166,22 @@ async def update_role(
             detail="Admin access required",
         )
     
-    # Check if role exists in default roles
-    if role_name not in DEFAULT_ROLE_PERMISSIONS:
-        logger.warning(f"Role {role_name} not found in default roles")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role {role_name} not found",
-        )
+    controller = RolesController(db_adapter)
+    updated_role = await controller.update_role(role_name, role_update.dict())
     
-    logger.info(f"Found role {role_name} in default roles")
+    if not updated_role:
+        if role_update.name != role_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot change name of built-in role {role_name}",
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Role {role_name} not found",
+            )
     
-    # Prevent changing built-in roles
-    if role_name in DEFAULT_ROLE_PERMISSIONS and role_update.name != role_name:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot change name of built-in role {role_name}",
-        )
-    
-    # Update role in memory
-    logger.info(f"Updating role {role_name} in default roles")
-    
-    # Create updated role object
-    updated_role = {
-        "name": role_update.name,
-        "description": role_update.description,
-        "permissions": role_update.permissions
-    }
-    
-    # Update in default roles dictionary
-    DEFAULT_ROLE_PERMISSIONS[role_name] = RolePermissions(**updated_role)
-    
-    logger.info(f"Updated role {role_name} in default roles")
-    
-    return DEFAULT_ROLE_PERMISSIONS[role_name]
-
+    return updated_role
 
 @router.delete(
     "/{role_name}",
@@ -255,42 +211,36 @@ async def delete_role(
             detail="Admin access required",
         )
     
-    # Prevent deleting built-in roles
-    if role_name in DEFAULT_ROLE_PERMISSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete built-in role {role_name}",
-        )
+    controller = RolesController(db_adapter)
+    result = await controller.delete_role(role_name)
     
-    # Delete role from in-memory dictionary
-    logger.info(f"Attempting to delete role {role_name}")
-    
-    # Check if role exists in our custom roles (not in default roles)
-    if role_name not in DEFAULT_ROLE_PERMISSIONS:
-        logger.warning(f"Role {role_name} not found in roles dictionary")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role {role_name} not found",
-        )
-    
-    # Remove from dictionary
-    del DEFAULT_ROLE_PERMISSIONS[role_name]
-    logger.info(f"Deleted role {role_name} from roles dictionary")
-
+    if not result:
+        if role_name in Role.__members__:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete built-in role {role_name}",
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Role {role_name} not found",
+            )
 
 @router.get(
-    "/permissions",
+    "/permissions/list",
     response_model=List[str],
     summary="List all permissions",
     description="List all available permissions. Admin only.",
 )
 async def list_permissions(
     current_user: User = Depends(get_current_active_user),
+    db_adapter: DatabaseAdapter = Depends(get_db_adapter),
 ) -> List[str]:
     """List all available permissions.
     
     Args:
         current_user: The current authenticated user
+        db_adapter: The database adapter
         
     Returns:
         A list of all available permissions
@@ -305,8 +255,5 @@ async def list_permissions(
             detail="Admin access required",
         )
     
-    logger.info("Listing all permissions")
-    # Return all permissions
-    permissions = [p.value for p in Permission]
-    logger.info(f"Returning {len(permissions)} permissions")
-    return permissions
+    controller = RolesController(db_adapter)
+    return await controller.list_permissions()

@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 
 from app.api.dependencies import get_current_user
-from app.models.users import Role, User
+from app.models.users.model import Role, User
 
 
 class RoleMiddleware:

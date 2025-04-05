@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.users import router as users_router
 from app.core.security import create_access_token
-from app.models.users import Role
+from app.models.users.model import Role
 
 
 @pytest.fixture

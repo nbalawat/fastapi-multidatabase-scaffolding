@@ -33,12 +33,13 @@ class DatabaseAdapter(ABC):
         pass
     
     @abstractmethod
-    async def read(self, collection: str, id: Any) -> Optional[Dict[str, Any]]:
-        """Read a record by its ID.
+    async def read(self, collection: str, id_or_key: Any, field: str = "id") -> Optional[Dict[str, Any]]:
+        """Read a record by its ID or another field.
         
         Args:
             collection: The name of the collection/table
-            id: The ID of the record to retrieve
+            id_or_key: The value to search for
+            field: The field to search on (default: 'id')
             
         Returns:
             The record if found, None otherwise
@@ -139,26 +140,4 @@ class DatabaseAdapterFactory:
         return list(cls._adapters.keys())
 
 
-async def get_db_adapter() -> DatabaseAdapter:
-    """Get the database adapter.
-    
-    This function is used as a dependency in FastAPI routes.
-    
-    Returns:
-        The database adapter for the configured database type
-    """
-    # Import here to avoid circular imports
-    from app.core.config import get_settings
-    
-    # Get the configured database type
-    settings = get_settings()
-    db_type = settings.db_type
-    
-    # Get the adapter instance
-    adapter = DatabaseAdapterFactory.get_adapter(db_type)
-    
-    # Ensure the adapter is connected
-    if not hasattr(adapter, "_client") or adapter._client is None:
-        await adapter.connect()
-    
-    return adapter
+# Note: The get_db_adapter function has been moved to app/api/dependencies/db.py

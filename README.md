@@ -22,10 +22,60 @@ app/
 ├── core/         # Core functionality (config, security, logging)
 ├── api/          # API routes and dependencies
 ├── db/           # Database adapters for different database systems
-├── models/       # Domain models
+├── models/       # Domain models organized by feature
+│   ├── notes/    # Notes feature (model, controller, router)
+│   └── users/    # Users feature (model, controller, router)
+├── utils/        # Utility functions
+│   ├── generic/  # Database-agnostic utilities
+│   ├── postgres/ # PostgreSQL-specific utilities
+│   ├── sqlserver/ # SQL Server-specific utilities
+│   └── mongo/    # MongoDB-specific utilities
 ├── schemas/      # Pydantic schemas for request/response validation
 └── services/     # Business logic and services
 ```
+
+## Model-Centric Architecture
+
+This project implements a model-centric architecture that separates model-specific logic from database-specific code:
+
+### Key Components
+
+1. **Base Controller**: A generic controller that provides CRUD operations for any model
+   ```python
+   class NotesController(BaseController[NoteCreate, NoteUpdate, Note]):
+       # Override base methods for model-specific logic
+       def _preprocess_create(self, data: Dict[str, Any]) -> Dict[str, Any]:
+           # Ensure tags is a list
+           if "tags" not in data or data["tags"] is None:
+               data["tags"] = []
+           return data
+   ```
+
+2. **Database-Specific Utilities**: Handle serialization/deserialization for each database type
+   ```python
+   # PostgreSQL array parser
+   def parse_postgres_array(value: Any, field_name: str = "unknown") -> List[Any]:
+       # Implementation for parsing PostgreSQL arrays
+   ```
+
+3. **Model-Specific Controllers**: Extend the base controller with model-specific logic
+   ```python
+   # Add custom methods to your controller
+   async def search_content(self, query: str) -> List[Dict[str, Any]]:
+       # Custom search implementation
+       all_notes = await self.list(0, 1000)
+       return [note for note in all_notes 
+               if query.lower() in note.get("content", "").lower()]
+   ```
+
+### Benefits
+
+- **Separation of Concerns**: Model logic is separate from database-specific code
+- **DRY Code**: Common functionality is extracted to reusable components
+- **Consistent Interfaces**: All models follow the same patterns
+- **Type Safety**: Proper type annotations throughout the codebase
+
+For more details, see the [architecture documentation](docs/architecture.md).
 
 ## Development
 

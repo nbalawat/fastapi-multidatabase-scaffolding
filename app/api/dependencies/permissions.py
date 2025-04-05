@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, status
 from app.api.dependencies.auth import get_current_active_user
 from app.db.base import DatabaseAdapter, DatabaseAdapterFactory
 from app.models.permissions import DEFAULT_ROLE_PERMISSIONS, Permission
-from app.models.users import Role, User
+from app.models.users.model import Role, User
 
 
 async def get_user_permissions(user: User, db_adapter: DatabaseAdapter) -> set[Permission]:

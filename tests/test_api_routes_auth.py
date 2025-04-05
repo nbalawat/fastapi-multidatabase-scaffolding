@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.auth import router as auth_router
 from app.core.security import get_password_hash
-from app.models.users import UserInDB, Role
+from app.models.users.model import UserInDB, Role
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.models.users import User, UserInDB, Role
+from app.models.users.model import User, UserInDB, Role
 
 
 def test_role_enum():

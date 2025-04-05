@@ -4,8 +4,8 @@ from typing import Dict, Any, List
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
-from app.models.notes import NoteVisibility
-from app.models.users import Role
+from app.models.notes.model import NoteVisibility
+from app.models.users.model import Role
 
 
 def custom_openapi(app: FastAPI) -> Dict[str, Any]:

@@ -80,31 +80,18 @@ echo "Initializing databases..."
 # First, ensure all adapters are registered by importing the main module
 python -c "from app.main import app; print('Database adapters registered successfully')" || echo "Failed to register database adapters"
 
-# Initialize database based on DB_TYPE
-if [ "$DB_TYPE" = "postgres" ]; then
-    # Create the PostgreSQL database if it doesn't exist
-    echo "Creating PostgreSQL database if it doesn't exist..."
-    python -m app.scripts.db_init.create_postgres_db
+# Initialize databases using the new schema registry and admin initializer
+echo "Initializing databases using schema registry..."
 
-    # Initialize PostgreSQL tables
-    echo "Initializing PostgreSQL tables..."
-    python -m app.scripts.db_init.init_postgres
-elif [ "$DB_TYPE" = "mongodb" ]; then
-    # Initialize MongoDB collections and indexes
-    echo "Initializing MongoDB..."
-    python -m app.scripts.db_init.init_mongodb
-elif [ "$DB_TYPE" = "mysql" ]; then
-    # Initialize MySQL database
-    echo "Initializing MySQL..."
-    # Add MySQL initialization script here if needed
-elif [ "$DB_TYPE" = "sqlserver" ]; then
-    # Initialize SQL Server database
-    echo "Initializing SQL Server..."
-    python -m app.scripts.db_init.init_sqlserver
-fi
+# The database initialization is now handled by the application startup
+# through the lifespan context manager in app.main.py
+# This includes:
+# 1. Schema registry initialization
+# 2. Database schema creation
+# 3. Admin user initialization
 
-# Create admin user
-python -m app.scripts.db_init.init_db  # Create admin user
+# Skip manual database initialization - the application will handle this during startup
+echo "Database initialization will be handled during application startup through the lifespan context manager."
 
 # Start application based on command
 if [ "$1" = "jupyter" ]; then
