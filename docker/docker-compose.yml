@@ -5,7 +5,7 @@ services:
   app_postgres:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.${PACKAGE_MANAGER:-uv}
+      dockerfile: docker/Dockerfile
     ports:
       - "8000:8000"
       - "8888:8888"
