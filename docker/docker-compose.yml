@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # PostgreSQL FastAPI Server
   app_postgres:
@@ -8,24 +10,25 @@ services:
       - "8000:8000"
       - "8888:8888"
     environment:
-      - APP_NAME=FastAPI PostgreSQL
-      - DEBUG=true
-      - API_PREFIX=/api/v1
-      - SECRET_KEY=changethisinsecretkey
-      - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      # PostgreSQL settings
+      - APP_NAME=${APP_NAME:-FastAPI Multiple Databases}
+      - DEBUG=${DEBUG:-true}
+      - API_PREFIX=${API_PREFIX:-/api/v1}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change_this_in_production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_TOKEN_EXPIRE_MINUTES=${JWT_TOKEN_EXPIRE_MINUTES:-1440}
+      # Database settings
       - DB_TYPE=postgres
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=fastapi
-      # SQL Server specific settings
-      - SQLSERVER_HOST=sqlserver
-      - SQLSERVER_PORT=1433
-      - SQLSERVER_USER=sa
-      - SQLSERVER_PASSWORD=YourStrong@Passw0rd
-      - SQLSERVER_DB=fastapi_db
+      - USE_DOCKER=true
+      # PostgreSQL settings
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-fastapi_db}
+      # Service names for Docker
+      - POSTGRES_SERVICE=postgres
+      - SQLSERVER_SERVICE=sqlserver
+      - MONGODB_SERVICE=mongodb
     volumes:
       - ../:/app
     depends_on:
@@ -45,25 +48,34 @@ services:
       - "8001:8000"
       - "8889:8888"
     environment:
-      - APP_NAME=FastAPI MongoDB
-      - DEBUG=true
-      - API_PREFIX=/api/v1
-      - SECRET_KEY=changethisinsecretkey
-      - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      # MongoDB settings
+      - APP_NAME=${APP_NAME:-FastAPI Multiple Databases}
+      - DEBUG=${DEBUG:-true}
+      - API_PREFIX=${API_PREFIX:-/api/v1}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change_this_in_production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_TOKEN_EXPIRE_MINUTES=${JWT_TOKEN_EXPIRE_MINUTES:-1440}
+      # Database settings
       - DB_TYPE=mongodb
-      - DB_HOST=mongodb
-      - DB_PORT=27017
-      - DB_USER=mongodb
-      - DB_PASSWORD=mongodb
-      - DB_NAME=fastapi
+      - USE_DOCKER=true
+      - DEBUG=true
+      # MongoDB settings
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_USER=${MONGODB_USER:-mongodb}
+      - MONGODB_PASSWORD=${MONGODB_PASSWORD:-mongodb}
+      - MONGODB_DB=${MONGODB_DB:-fastapi_db}
+      # Explicit connection string with authSource=admin
+      - MONGODB_CONNECTION_STRING=mongodb://${MONGODB_USER:-mongodb}:${MONGODB_PASSWORD:-mongodb}@mongodb:27017/${MONGODB_DB:-fastapi_db}?authSource=admin
+      # Service names for Docker
+      - POSTGRES_SERVICE=postgres
+      - SQLSERVER_SERVICE=sqlserver
+      - MONGODB_SERVICE=mongodb
     volumes:
       - ../:/app
     depends_on:
-      - postgres
-      - mysql
       - mongodb
-      - sqlserver
+    networks:
+      - default
     command: |
       /bin/sh -c 'sh /app/start.sh'
       
@@ -76,18 +88,25 @@ services:
       - "8002:8000"
       - "8890:8888"
     environment:
-      - APP_NAME=FastAPI SQL Server
-      - DEBUG=true
-      - API_PREFIX=/api/v1
-      - SECRET_KEY=changethisinsecretkey
-      - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      # SQL Server settings
+      - APP_NAME=${APP_NAME:-FastAPI Multiple Databases}
+      - DEBUG=${DEBUG:-true}
+      - API_PREFIX=${API_PREFIX:-/api/v1}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change_this_in_production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_TOKEN_EXPIRE_MINUTES=${JWT_TOKEN_EXPIRE_MINUTES:-1440}
+      # Database settings
       - DB_TYPE=sqlserver
-      - DB_HOST=sqlserver
-      - DB_PORT=1433
-      - DB_USER=sa
-      - DB_PASSWORD=YourStrong@Passw0rd
-      - DB_NAME=fastapi_db
+      - USE_DOCKER=true
+      # SQL Server settings
+      - SQLSERVER_HOST=sqlserver
+      - SQLSERVER_PORT=1433
+      - SQLSERVER_USER=${SQLSERVER_USER:-sa}
+      - SQLSERVER_PASSWORD=${SQLSERVER_PASSWORD:-YourStrong@Passw0rd}
+      - SQLSERVER_DB=${SQLSERVER_DB:-fastapi_db}
+      # Service names for Docker
+      - POSTGRES_SERVICE=postgres
+      - SQLSERVER_SERVICE=sqlserver
+      - MONGODB_SERVICE=mongodb
     volumes:
       - ../:/app
     depends_on:
@@ -103,9 +122,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=fastapi
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-fastapi_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -114,23 +133,27 @@ services:
     ports:
       - "3306:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_USER=mysql
-      - MYSQL_PASSWORD=mysql
-      - MYSQL_DATABASE=fastapi
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root}
+      - MYSQL_USER=${MYSQL_USER:-mysql}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-mysql}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-fastapi_db}
     volumes:
       - mysql_data:/var/lib/mysql
 
   mongodb:
     image: mongo:6
+    container_name: mongodb
+    hostname: mongodb
     ports:
       - "27017:27017"
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=mongodb
-      - MONGO_INITDB_ROOT_PASSWORD=mongodb
-      - MONGO_INITDB_DATABASE=fastapi
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USER:-mongodb}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD:-mongodb}
+      - MONGO_INITDB_DATABASE=${MONGODB_DB:-fastapi_db}
     volumes:
       - mongodb_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    command: ["--auth"]
       
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2019-latest
@@ -138,7 +161,7 @@ services:
       - "1433:1433"
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=YourStrong@Passw0rd
+      - SA_PASSWORD=${SQLSERVER_PASSWORD:-YourStrong@Passw0rd}
       - MSSQL_PID=Developer
     volumes:
       - sqlserver_data:/var/opt/mssql
@@ -148,3 +171,8 @@ volumes:
   mysql_data:
   mongodb_data:
   sqlserver_data:
+
+networks:
+  default:
+    name: fastapi-network
+    driver: bridge

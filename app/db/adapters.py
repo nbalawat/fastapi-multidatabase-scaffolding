@@ -242,27 +242,73 @@ class MongoDBAdapter(DatabaseAdapter):
     async def connect(self) -> None:
         """Connect to the MongoDB database."""
         from motor.motor_asyncio import AsyncIOMotorClient
+        import socket
+        import time
         
         if self._client is None:
-            try:
-                # Use the connection string if provided, otherwise build one from components
-                if self.settings.mongodb_connection_string:
-                    conn_str = self.settings.mongodb_connection_string
-                else:
-                    # Build a standard MongoDB connection string with authSource=admin
-                    # This is critical for MongoDB authentication to work properly
-                    conn_str = f"mongodb://{self.settings.db_user}:{self.settings.db_password}@{self.settings.db_host}:{self.settings.db_port}/{self.settings.db_name}?authSource=admin"
-                
-                logger.info(f"Connecting to MongoDB at {self.settings.db_host if not self.settings.mongodb_connection_string else 'custom connection string'}")
-                # Add server selection timeout to fail fast if connection fails
-                self._client = AsyncIOMotorClient(conn_str, serverSelectionTimeoutMS=5000)
-                # Verify connection by checking server info
-                await self._client.admin.command('ping')
-                self._db = self._client[self.settings.db_name]
-                logger.info("Connected to MongoDB database")
-            except Exception as e:
-                logger.error(f"Error connecting to MongoDB database: {e}")
-                raise
+            # Set up connection parameters
+            max_retries = 5
+            retry_delay = 3  # seconds
+            attempt = 0
+            last_error = None
+            
+            while attempt < max_retries:
+                try:
+                    # Try to resolve hostname first if we're in Docker
+                    if self.settings.use_docker and not self.settings.mongodb_connection_string:
+                        try:
+                            # Try to resolve the MongoDB hostname
+                            logger.info(f"Attempting to resolve MongoDB hostname: {self.settings.db_host}")
+                            resolved_ip = socket.gethostbyname(self.settings.db_host)
+                            logger.info(f"Resolved MongoDB hostname to IP: {resolved_ip}")
+                            
+                            # Use the resolved IP instead of hostname
+                            conn_str = f"mongodb://{self.settings.db_user}:{self.settings.db_password}@{resolved_ip}:{self.settings.db_port}/{self.settings.db_name}?authSource=admin"
+                        except socket.gaierror:
+                            logger.warning(f"Could not resolve MongoDB hostname: {self.settings.db_host}, trying alternatives")
+                            
+                            # Try alternative hostnames for Docker environments
+                            if self.settings.db_host == "mongodb":
+                                # Try localhost as fallback
+                                conn_str = f"mongodb://{self.settings.db_user}:{self.settings.db_password}@host.docker.internal:{self.settings.db_port}/{self.settings.db_name}?authSource=admin"
+                                logger.info("Trying host.docker.internal as alternative")
+                            else:
+                                # Use the connection string as provided
+                                conn_str = f"mongodb://{self.settings.db_user}:{self.settings.db_password}@{self.settings.db_host}:{self.settings.db_port}/{self.settings.db_name}?authSource=admin"
+                    elif self.settings.mongodb_connection_string:
+                        # Use the explicit connection string if provided
+                        conn_str = self.settings.mongodb_connection_string
+                    else:
+                        # Build a standard MongoDB connection string with authSource=admin
+                        conn_str = f"mongodb://{self.settings.db_user}:{self.settings.db_password}@{self.settings.db_host}:{self.settings.db_port}/{self.settings.db_name}?authSource=admin"
+                    
+                    logger.info(f"Connecting to MongoDB (attempt {attempt+1}/{max_retries}) using: {conn_str.replace(self.settings.db_password, '****')}")
+                    
+                    # Increase timeout for Docker environments
+                    self._client = AsyncIOMotorClient(
+                        conn_str, 
+                        serverSelectionTimeoutMS=10000,
+                        connectTimeoutMS=10000,
+                        socketTimeoutMS=10000
+                    )
+                    
+                    # Verify connection by checking server info
+                    await self._client.admin.command('ping')
+                    self._db = self._client[self.settings.db_name]
+                    logger.info("Connected to MongoDB database successfully")
+                    return
+                    
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"MongoDB connection attempt {attempt+1}/{max_retries} failed: {e}")
+                    attempt += 1
+                    if attempt < max_retries:
+                        logger.info(f"Retrying in {retry_delay} seconds...")
+                        await asyncio.sleep(retry_delay)
+            
+            # If we get here, all retries failed
+            logger.error(f"Failed to connect to MongoDB after {max_retries} attempts. Last error: {last_error}")
+            raise last_error
     
     async def disconnect(self) -> None:
         """Disconnect from the MongoDB database."""
