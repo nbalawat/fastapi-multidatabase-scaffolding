@@ -11,6 +11,7 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.core.config import get_settings
 from app.models.users.model import UserInDB, Role, User
 from app.models.auth.model import Token
+from app.core.permissions import get_permission_registry
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +52,21 @@ class AuthController:
             logger.warning(f"Failed login attempt for user: {username}")
             return None
         
-        # Create a token for the user
+        # Get the permission registry
+        permission_registry = get_permission_registry()
+        
+        # Get the user's role
+        user_role = user.role.value if isinstance(user.role, Role) else user.role
+        
+        # Get permissions for the user's role
+        role_permissions = permission_registry.get_role_permissions(user_role)
+        
+        # Create a token for the user with role and permissions
         token_data = {
             "sub": user.username,
-            "role": user.role.value if isinstance(user.role, Role) else user.role,
+            "role": user_role,
+            "roles": [user_role],  # Include as a list for the RBAC middleware
+            "permissions": role_permissions,  # Include permissions from the role
         }
         
         # Get settings for token creation

@@ -154,8 +154,17 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     
-    # Return the user data
-    return {"username": username, "role": role}
+    # Extract permissions and roles if present
+    permissions = payload.get("permissions", [])
+    roles = payload.get("roles", [role])
+    
+    # Return the complete user data
+    return {
+        "username": username, 
+        "role": role,
+        "roles": roles,
+        "permissions": permissions
+    }
 
 
 def get_current_active_user(
@@ -243,25 +252,18 @@ class RBACMiddleware:
             # but we log a warning to alert developers
         
         async def check_permissions(token: str = Depends(oauth2_scheme)):
-            # Decode token and get user
+            # Get settings and decode token
             settings = get_settings()
-            payload = decode_token(token, settings)
-            if not payload:
+            
+            # We'll use get_current_user which handles token validation
+            try:
+                # Pass both token and settings to get_current_user
+                user = await get_current_user(token, settings)
+            except HTTPException as e:
+                # Re-raise the exception with our custom message
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid authentication credentials",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-                
-            # We've already decoded the token, now we need to use it to get the user
-            # Since our get_current_user function already handles token decoding,
-            # we'll use it directly instead of trying to get the user separately
-            try:
-                user = await get_current_user(token)
-            except HTTPException:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User not found",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
                 
@@ -307,25 +309,18 @@ class RBACMiddleware:
             # but we log a warning to alert developers
             
         async def check_roles(token: str = Depends(oauth2_scheme)):
-            # Decode token and get user
+            # Get settings and decode token
             settings = get_settings()
-            payload = decode_token(token, settings)
-            if not payload:
+            
+            # We'll use get_current_user which handles token validation
+            try:
+                # Pass both token and settings to get_current_user
+                user = await get_current_user(token, settings)
+            except HTTPException as e:
+                # Re-raise the exception with our custom message
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid authentication credentials",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-                
-            # We've already decoded the token, now we need to use it to get the user
-            # Since our get_current_user function already handles token decoding,
-            # we'll use it directly instead of trying to get the user separately
-            try:
-                user = await get_current_user(token)
-            except HTTPException:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User not found",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
                 
